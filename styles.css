@@ -1,0 +1,296 @@
+html {
+    scroll-behavior: smooth;
+  }
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', sans-serif;
+}
+li a:hover{
+color: #ff4b00;
+transition: color 0.3s ease-in-out;
+}
+
+.container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    padding-bottom: 0px;
+    background-color: #333;
+    color: white;
+    position: fixed;
+    transition: all 0.3s ease-in-out;
+    width: 99%;
+    top: 0;
+    z-index: 1000;
+}
+.container img {
+    width: 180px;
+}
+.logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-decoration: none;
+    color: white;
+}
+
+.nav ul {
+    list-style: none;
+    display: flex;
+    gap: 15px;
+}
+
+.nav a {
+    text-decoration: none;
+    color: white;
+}
+.hero{
+    position: relative;
+    margin-top: 80px;
+}
+.hero img {
+    width: 100%;
+    max-height: 90vh;
+    object-fit: cover;
+}
+.hero-bloc-text{
+    position: absolute;
+    left: 100px;
+    top: 40%;
+}
+.hero-bloc-text h1{
+    font-size: 50px;
+    font-weight: 800;
+    color: #c5ab77;
+    opacity: 1;
+    visibility: visible;
+}
+ h2{
+    color: #aca68a;
+}
+ h3{
+    font-size: 30px;
+    font-weight: 800;
+    color: #baab94;
+    opacity: 1;
+    visibility: visible;
+}
+.hero-bloc-text a{
+    all: unset;
+    cursor: pointer;
+}
+.hero-bloc-text a:hover{
+    color: #ff4b00;
+    transition: color 0.3s ease-in-out;
+}
+.services, .about, .contact {
+    padding: 50px;
+    text-align: center;
+}
+
+.service-list {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 35px;
+}
+
+.service-item {
+    width: 25%;
+    background-color: #f4f4f4;
+    border-radius: 5px;
+    box-shadow: 0px 5px 30px 0px rgb(148 146 245 / 15%);
+    transition: transform 0.3s ease-in-out; 
+}
+/* Conteneur principal */
+.container-why {
+    width: 90%;
+    max-width: 800px;
+    margin: 50px auto;
+    text-align: center;
+    padding: 40px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-image: url(/section-bg.jpg);
+    z-index: 1;
+    text-align: center;
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+/* Titres */
+.container-why h2 {
+    color: white;
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+.container-why h1 {
+    font-size: 32px;
+    color: white;
+    margin-bottom: 10px;
+    
+}
+
+.container-why h5 {
+    font-size: 18px;
+    color: white;
+    margin-bottom: 20px;
+}   
+.thecar-theme-reservation-area{
+    background: #c5ab7799;
+    padding: 15px;
+    border-radius: 20px;
+    backdrop-filter: blur(15px);
+}
+.reservation-btn {
+    display: inline-block;
+    padding: 12px 30px;
+    font-size: 18px;
+    font-weight: bold;
+    color: white;
+    background-color: #ff4b00;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+.reservation-btn:hover {
+    background-color: #cc3d00;
+    transform: scale(1.05);
+}
+
+/* Conteneur partner */
+.partner-container {
+    width: 90%;
+    max-width: 1200px;
+    margin: 50px auto;
+    text-align: center;
+    padding: 20px;
+}
+
+/* Section partenaire */
+.partner-area {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 30px;
+}
+
+/* Élément partenaire */
+.partner-item {
+    width: 200px;
+    height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f8f8;
+    border-radius: 10px;
+    box-shadow: 0px 5px 30px 0px rgb(148 146 245 / 15%);
+    transition: transform 0.3s ease-in-out;
+}
+
+/* Image partenaire */
+.partner-item img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+}
+
+/* Effet au survol */
+.partner-item:hover {
+    transform: scale(1.1);
+}
+.service-item:hover{
+    transform: scale(1.1);
+}
+
+/* General styling for the blog row and columns */
+.blog-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+  }
+  
+  .blog-col {
+    width: 20%;
+    box-sizing: border-box;
+    margin-bottom: 20px;
+  }
+  
+  /* Styling for the blog card */
+  .blog-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    height: 100%;
+    box-shadow:  0px 5px 30px 0px rgb(148 146 245 / 15%);
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .blog-card:hover {
+    transform: translateY(-10px);
+  }
+  
+  /* Blog card image */
+  .blog-card-img {
+    width: 80%;
+    height: auto;
+    object-fit: cover;
+    padding: 10px;
+    border-radius: 25px;
+    margin-top: 20px;
+  }
+  
+  /* Blog card body */
+  .blog-card-body {
+    padding: 15px;
+  }
+  
+  .blog-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  
+  .blog-card-text {
+    font-size: 1rem;
+    color: #555;
+  }
+  
+  /* Add animation (example with fadeIn effect) */
+  @keyframes blog-fadeInLeft {
+    0% {
+      opacity: 0;
+      transform: translateX(-50px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .wow.blog-fadeInLeft {
+    animation: blog-fadeInLeft 0.6s ease-out;
+  }
+  
+  /* Delay animation */
+  [data-wow-delay="0.2s"] {
+    animation-delay: 0.2s;
+  }
+
+.footer {
+    text-align: center;
+    padding: 20px;
+    background-color: #333;
+    color: white;
+}
