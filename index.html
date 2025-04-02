@@ -7,18 +7,19 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header class="header">
+    <div class="header">
         <div class="container">
             <a href="#" class="logo"><img src="/logo-livradois-automobiles.png" alt=""></a>
             <nav class="nav">
-                <ul>
-                    <li><a href="https://livradois-auto.fr/achetez" target="_blank">Nos véhicule</a></li>
-                    <li><a href="https://livradois-auto.fr/achetez" target="_blank">Devis en ligne</a></li>
-                    <li><a href="#services">Services</a></li>
-                    <li><a href="#about">À propos</a></li>
-                    <li><a href="#contact">Contact</a></li>
-                </ul>
-            </nav>
+              <button class="menu" id="menu-toggle"></button>
+              <ul class="nav-list">
+                <li><a href="https://livradois-auto.fr/achetez" target="_blank">Nos véhicules</a></li>
+                <li><a href="https://livradois-auto.fr/achetez" target="_blank">Devis en ligne</a></li>
+                <li><a href="#services">Services</a></li>
+                <li><a href="#about">À propos</a></li>
+                <li><a href="#contact">Contact</a></li>
+              </ul>
+            </nav>                  
         </div>
         <div class="hero">
             <div class="hero-bloc-text">
@@ -28,9 +29,9 @@
             </div>
             <img src="header.jpg" alt="Réparation et Esthétique Automobile">
         </div>
-    </header>
+    </div>
     
-    <section id="services" class="services">
+    <div id="services" class="services">
         <h2>Nos Services</h2>
         <div class="service-list">
             <div class="service-item">
@@ -58,7 +59,7 @@
                 <p>Nettoyage et entretien de l'intérieur de votre voiture.</p>
             </div>
         </div>
-    </section>
+    </div>
     <div class="container-why">
         <div class="thecar-theme-reservation-area">
             <h2>Pourquoi Nous Choisir ?</h2>
@@ -78,9 +79,13 @@
             <div class="partner-item"><img src="/partner/c-5.jpg" alt="Partner 6"></div>
         </div>
     </div>
-    <section id="about" class="about">
-        <h2>À Propos de Nous</h2>
-        <p>Nous sommes spécialisés dans la réparation et l'esthétique automobile, offrant des services professionnels pour redonner éclat et performance à votre véhicule.</p>
+    <div id="about" class="about">
+        <div style="display: flex; justify-content: center; padding: 15px;">
+        <div class="service-item" style="padding: 15px;">
+          <h3>À Propos de Nous</h3>
+          <p>Nous sommes spécialisés dans la réparation et l'esthétique automobile, offrant des services professionnels pour redonner éclat et performance à votre véhicule.</p>
+      </div></div>
+
         <div class="blog-row">
             <div class="blog-col">
               <div class="blog-card">
@@ -113,7 +118,7 @@
             </div>
           </div>
           
-    </section>
+    </div>
     <div id="contact" class="container-why">
         <div class="thecar-theme-reservation-area">
           <h2>Livradois Automobile</h2>
@@ -130,4 +135,5 @@
         <p>&copy; 2025 Livradois Automobile. Tous droits réservés.</p>
     </footer>
 </body>
+<script src="/script.js"></script>
 </html>
