@@ -171,6 +171,7 @@ transition: color 0.3s ease-in-out;
  h3{
     font-size: 30px;
     font-weight: 800;
+    margin: 5px;
     color: #baab94;
     opacity: 1;
     visibility: visible;
@@ -424,6 +425,9 @@ transition: color 0.3s ease-in-out;
 
 /* Section des informations */
 .footer-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   max-width: 300px;
 }
 
