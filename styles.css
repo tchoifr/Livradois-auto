@@ -399,7 +399,7 @@ transition: color 0.3s ease-in-out;
 .footer {
   background-color: #333;
   color: white;
-  padding: 40px 20px;
+  padding: 25px 0px;
   font-family: Arial, sans-serif;
 }
 
@@ -413,6 +413,7 @@ transition: color 0.3s ease-in-out;
 /* Section des logos */
 .footer-logos {
   display: flex;
+  align-items: center;
   gap: 20px;
 }
 
@@ -435,7 +436,6 @@ transition: color 0.3s ease-in-out;
 }
 
 .footer-info a {
-  color: #00bcd4;
   text-decoration: none;
 }
 
