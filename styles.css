@@ -110,7 +110,7 @@ transition: color 0.3s ease-in-out;
     border-radius: var(--s);
     inset: 40% 0;
     background: var(--c);
-    transition: transform 0.3s ease; /* Transition fluide pour la transformation */
+    transition: transform 0.2s ease; /* Transition fluide pour la transformation */
   }
   
   /* Animation du hamburger en croix (au clic) */
@@ -128,7 +128,7 @@ transition: color 0.3s ease-in-out;
   .nav.open .menu {
     background-image: none;
     transform: rotate(45deg); /* Transformation de l'icône du hamburger */
-    transition: transform 0.3s ease;
+    transition: transform 0.2s ease;
   }
   
   
@@ -173,7 +173,7 @@ transition: color 0.3s ease-in-out;
 }
 .hero-bloc-text a:hover{
     color: #ff4b00;
-    transition: color 0.3s ease-in-out;
+    transition: color 0.2s ease-in-out;
 }
 .services, .about, .contact {
     padding: 20px;
@@ -194,7 +194,7 @@ transition: color 0.3s ease-in-out;
     border-radius: 5px;
     padding: 30px;
     box-shadow: 0px 5px 30px 0px rgb(148 146 245 / 15%);
-    transition: transform 0.3s ease-in-out; 
+    transition: transform 0.2s ease-in-out; 
 }
 /* Conteneur principal */
 .container-why {
@@ -292,7 +292,7 @@ transition: color 0.3s ease-in-out;
     background: #f8f8f8;
     border-radius: 10px;
     box-shadow: 0px 5px 30px 0px rgb(148 146 245 / 15%);
-    transition: transform 0.3s ease-in-out;
+    transition: transform 0.2s ease-in-out;
 }
 
 /* Image partenaire */
@@ -332,7 +332,7 @@ transition: color 0.3s ease-in-out;
     overflow: hidden;
     height: 100%;
     box-shadow:  0px 5px 30px 0px rgb(148 146 245 / 15%);
-    transition: transform 0.3s ease-in-out;
+    transition: transform 0.2s ease-in-out;
   }
   
   .blog-card:hover {
