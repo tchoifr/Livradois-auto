@@ -152,18 +152,18 @@ transition: color 0.3s ease-in-out;
 .hero-bloc-text h1{
     font-size: 50px;
     font-weight: 800;
-    color: #c5ab77;
+    color: #806A52;
     opacity: 1;
     visibility: visible;
 }
  h2{
-    color: #aca68a;
+    color: #806A52;
 }
  h3{
     font-size: 30px;
     font-weight: 800;
     margin: 5px;
-    color: #baab94;
+    color: #806A52;
     opacity: 1;
     visibility: visible;
 }
@@ -220,7 +220,7 @@ transition: color 0.3s ease-in-out;
 .h1style{
   font-size: 50px;
   font-weight: 800;
-  color: #c5ab77;
+  color: #806A52;
   opacity: 1;
   visibility: visible;
   margin: 10px;
