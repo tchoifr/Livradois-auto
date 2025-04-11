@@ -189,6 +189,9 @@ transition: color 0.3s ease-in-out;
 }
 
 .service-item {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     width: 25%;
     background-color: #f4f4f4;
     border-radius: 5px;
@@ -253,7 +256,7 @@ transition: color 0.3s ease-in-out;
     padding: 12px 30px;
     font-size: 18px;
     font-weight: bold;
-    color: black;
+    color: white;
     background-color: #ff4b00;
     text-decoration: none;
     border-radius: 15px;
