@@ -71,10 +71,6 @@
             width: 100%;
             max-width: 100%;
          }
-         .hero img {
-          max-height: 70vh;
-          object-fit: contain;
-      }
    }
    @media (max-width: 480px) {
      .service-item{
@@ -96,6 +92,7 @@
          padding: 0px;
      }
      .hero img {
+      width: 100%;
       max-height: 40vh;
       object-fit: contain;
   }
@@ -103,7 +100,12 @@
    @media (max-width: 375px) {
      .hero-bloc-text{
       left: 8px;
-      top: 25%;
+      top: 35%;
         }
+        .hero img {
+          width: 100%;
+          max-height: 40vh;
+          object-fit: contain;
+      }
      
    }
