@@ -215,7 +215,7 @@ transition: color 0.3s ease-in-out;
     background-size: contain;
     background-repeat: no-repeat;
     background-attachment: fixed;
-    background-image: url(assets/fondwhy.jpg);
+    background-image: url(assets/fondwhy.webp);
     z-index: 1;
     text-align: center;
     position: relative;
