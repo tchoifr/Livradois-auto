@@ -10,8 +10,18 @@
 body {
     font-family: 'Roboto', sans-serif;
 }
+/*scrool effect*/
+.lazy-animated {
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
 
-
+/* Quand l'image est visible */
+.lazy-animated.visible {
+  opacity: 1;
+  transform: scale(1);
+}
 /*scrool bar*/
 ::-webkit-scrollbar {
     width: 8px;

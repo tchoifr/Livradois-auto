@@ -1,11 +1,1 @@
-// Sélectionner les éléments du DOM
-const menuToggle = document.getElementById('menu-toggle');
-const nav = document.querySelector('.nav');
-const menu = document.querySelector('.menu');
-
-// Ajouter un écouteur d'événements sur le bouton hamburger
-menuToggle.addEventListener('click', () => {
-  // Ajouter ou supprimer la classe 'open' sur le menu et le bouton
-  menu.classList.toggle('open');
-  nav.classList.toggle('open');
-});
+const menuToggle=document.getElementById("menu-toggle"),nav=document.querySelector(".nav"),menu=document.querySelector(".menu");menuToggle.addEventListener("click",()=>{menu.classList.toggle("open"),nav.classList.toggle("open")}),document.addEventListener("DOMContentLoaded",()=>{let e=document.querySelectorAll(".lazy-animated"),t=new IntersectionObserver((e,t)=>{e.forEach(e=>{e.isIntersecting&&(e.target.classList.add("visible"),t.unobserve(e.target))})},{threshold:.1});e.forEach(e=>t.observe(e))});
