@@ -411,6 +411,7 @@ transition: color 0.3s ease-in-out;
 .footer-container {
   display: flex;
   justify-content: space-around;
+  align-items: center;
   flex-wrap: wrap;
 }
 
@@ -418,14 +419,32 @@ transition: color 0.3s ease-in-out;
 .footer-logos {
   display: flex;
   align-items: center;
+  flex-direction: column;
   gap: 20px;
 }
 
-.footer-logo {
-  width: 100px;
-  height: auto;
-}
 
+.footerA {
+  width: 40px;
+  height: 40px;
+  transition: transform 0.3s ease-in-out;
+  color: white;
+  padding: 5px;
+  margin: 5px;
+  border-radius: 10px;
+  background: rgb(255, 255, 255);
+  background: -moz-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
+  background: -webkit-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
+  background: linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
+}
+.footerA:hover {
+  transform: scale(1.1);
+}
+.logoFooter{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 /* Section des informations */
 .footer-info {
   display: flex;
