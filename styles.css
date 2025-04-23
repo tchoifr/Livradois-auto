@@ -433,9 +433,9 @@ transition: color 0.3s ease-in-out;
   margin: 5px;
   border-radius: 10px;
   background: rgb(255, 255, 255);
-  background: -moz-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
-  background: -webkit-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
-  background: linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #ff2000 100%);
+  background: -moz-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #9E2F00 100%);
+  background: -webkit-linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #9E2F00 100%);
+  background: linear-gradient(156deg, rgba(255, 255, 255, 1) 20%, #9E2F00 100%);
 }
 .footerA:hover {
   transform: scale(1.1);
