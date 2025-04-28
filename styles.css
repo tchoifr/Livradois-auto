@@ -399,6 +399,66 @@ transition: color 0.3s ease-in-out;
     animation-delay: 0.2s;
   }
 
+
+
+/* Avis Section */
+#avis {
+  padding: 60px 20px;
+  text-align: center;
+  background-color: var(--background-color);
+  overflow: hidden;
+}
+
+.avis-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.avis-slider {
+  display: flex;
+  gap: 20px;
+  animation: scrollAvis 15s linear infinite;
+}
+
+.avis-card {
+  background-color: var(--background-color);
+  padding: 20px;
+  min-width: 300px;
+  box-shadow: 0px 5px 30px 0px rgb(148 146 245 / 15%);
+  border-radius: 8px;
+  text-align: left;
+  margin: 10px;
+}
+
+.avis-card h3 {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.avis-card p {
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.stars {
+  margin-top: 10px;
+  font-size: 1.5rem;
+  color: var(--star-color);
+}
+
+@keyframes scrollAvis {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+
+
+
 /* Styles de base du footer */
 .footer {
   background-color: #333;
