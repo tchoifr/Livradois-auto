@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 
+                      http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!-- Accueil -->
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/</loc>
+    <priority>1.0</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <!-- Nos véhicules -->
+  <url>
+    <loc>https://livradois-auto.fr/achetez</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <!-- Devis réparation -->
+  <url>
+    <loc>https://www.eurorepar.fr/garage-livradois-automobiles-arlanc-3554.html</loc>
+    <priority>0.6</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+  <!-- Sections internes de la page d'accueil -->
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/#services</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/#partenaire</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/#apropos</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/#contact</loc>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Pages légales -->
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/mentions-legales.html</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/politique-de-confidentialite.html</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/conditions-generales-de-vente.html</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/conditions-generales-de-location.html</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://livradois-automobiles.netlify.app/conditions-generales-de-reparation.html</loc>
+    <priority>0.3</priority>
+  </url>
+
+  <!-- Éditeur du site -->
+  <url>
+    <loc>https://natam.fr/mentions-legales.html</loc>
+    <priority>0.2</priority>
+  </url>
+
+</urlset>
