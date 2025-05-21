@@ -91,6 +91,10 @@
      .container-why {
          padding: 0px;
      }
+     .partner-item {
+    width: 100px;
+    height: 100px;
+     }
 
    }
    @media (max-width: 375px) {
