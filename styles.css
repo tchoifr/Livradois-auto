@@ -90,7 +90,7 @@ transition: color 0.3s ease-in-out;
   
   /* Animation du bouton hamburger */
   .menu {
-    --s: 35px; /* contrôle la taille */
+    --s: 30px; /* contrôle la taille */
     --c: white; /* couleur */
     height: var(--s);
     width: var(--s);
