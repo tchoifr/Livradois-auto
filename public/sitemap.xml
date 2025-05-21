@@ -58,10 +58,6 @@
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://livradois-automobiles.netlify.app/conditions-generales-de-location.html</loc>
-    <priority>0.3</priority>
-  </url>
-  <url>
     <loc>https://livradois-automobiles.netlify.app/conditions-generales-de-reparation.html</loc>
     <priority>0.3</priority>
   </url>
