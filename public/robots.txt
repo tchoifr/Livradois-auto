@@ -1,1 +1,1 @@
-Sitemap: https://livradois-automobiles.netlify.app/sitemap.xml
+Sitemap: https://livradois-automobiles.netlify.app/public/sitemap.xml
