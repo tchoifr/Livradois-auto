@@ -1,0 +1,10 @@
+# Identifiants et fichiers de configuration privés — ne jamais publier
+bdd.txt
+*.env
+.env*
+config.local.php
+**/config.local.php
+*.pem
+*.ppk
+id_rsa*
+.vscode/sftp.json
