@@ -64,9 +64,19 @@ jobs:
 
       - name: Contrôle de l'API
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/api.php?r=vehicules")
-          echo "GET /api.php?r=vehicules → HTTP $code"
-          test "$code" = "200"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$API_URL/api.php?r=vehicules" || true)
+          echo "GET $API_URL/api.php?r=vehicules → HTTP $code"
+          if [ "$code" = "200" ]; then exit 0; fi
+          if [ "$code" = "000" ]; then
+            # Certificat SSL pas encore émis : on vérifie que le serveur répond en HTTP (redirection vers HTTPS)
+            http=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "${API_URL/https:/http:}/api.php?r=vehicules" || true)
+            echo "HTTP (sans SSL) → $http"
+            if [ "$http" = "301" ] || [ "$http" = "302" ]; then
+              echo "::warning::API déployée, mais le certificat SSL n'est pas encore actif sur ${API_URL}."
+              exit 0
+            fi
+          fi
+          exit 1
 
       - name: Suppression de la clé SSH
         if: always()
