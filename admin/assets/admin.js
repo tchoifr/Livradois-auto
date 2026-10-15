@@ -108,11 +108,26 @@
     });
   }
 
+  /* Compteurs + notification des nouvelles demandes (vérifiées toutes les 30 s) */
+  var lastNew = null, baseTitle = document.title, poll = null;
   function setCounts(stats) {
-    $("[data-count-demandes]").textContent = stats.demandesNouvelles || "";
+    var n = stats.demandesNouvelles || 0;
+    $("[data-count-demandes]").textContent = n || "";
     $("[data-count-annonces]").textContent = (stats.enLigne + stats.reserves) || "";
+    if (lastNew !== null && n > lastNew) {
+      var diff = n - lastNew;
+      toast(diff > 1 ? diff + " nouvelles demandes reçues" : "Nouvelle demande reçue sur le site");
+      if (location.hash.indexOf("#/demandes") === 0 || location.hash === "" || location.hash === "#/") router();
+    }
+    lastNew = n;
+    document.title = (n ? "(" + n + ") " : "") + baseTitle.replace(/^\(\d+\)\s*/, "");
   }
-  function refreshCounts() { api("admin/stats").then(setCounts).catch(function () {}); }
+  function refreshCounts() { if (S.user) api("admin/stats").then(setCounts).catch(function () {}); }
+  function startPolling() {
+    if (poll) return;
+    poll = setInterval(refreshCounts, 30000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCounts(); });
+  }
 
   function showLogin(msg) {
     S.user = null;
@@ -130,6 +145,7 @@
     $("[data-user]").textContent = (S.user.name ? S.user.name + " · " : "") + S.user.email;
     $("[data-site-link]").href = S.siteUrl || "#";
     refreshCounts();
+    startPolling();
     router();
   }
 
@@ -162,7 +178,8 @@
     var m = path.match(r[0]) || [];
     $$("[data-nav]").forEach(function (a) { a.classList.toggle("is-active", a.getAttribute("data-nav") === r[2]); });
     $("[data-title]").textContent = r[3];
-    document.title = r[3] + " – Back-office Livradois Automobiles";
+    baseTitle = r[3] + " – Back-office Livradois Automobiles";
+    document.title = (lastNew ? "(" + lastNew + ") " : "") + baseTitle;
     $("[data-actions]").innerHTML = "";
     $("#side").classList.remove("is-open");
     // Conteneur neuf à chaque vue : aucun écouteur ne survit d'une page à l'autre

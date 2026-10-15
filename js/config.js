@@ -3,6 +3,5 @@
               Laisser vide pour utiliser le stock statique de js/vehicules-data.js.
    adminApi : adresse utilisée par le dashboard (admin/) ; par défaut, la même que « api ». */
 window.LA_CONFIG = {
-  api: "",
-  adminApi: "https://livradois-api.byhnex.com/api.php",
+  api: "https://livradois-api.byhnex.com/api.php",
 };
