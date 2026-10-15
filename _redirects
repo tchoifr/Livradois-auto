@@ -1,0 +1,6 @@
+# Netlify : fichiers du dépôt à ne jamais publier (le back-office PHP est hébergé sur OVH)
+/backoffice/*   /404.html   404!
+/backoffice     /404.html   404!
+/.github/*      /404.html   404!
+/bdd.txt        /404.html   404!
+/_config.yml    /404.html   404!
