@@ -3,7 +3,15 @@
   "use strict";
 
   // Adresse de l'API (OVH), partagée avec le site dans js/config.js
-  var API_BASE = ((window.LA_CONFIG || {}).api || "").replace(/\/+$/, "");
+  var API_BASE = ((window.LA_CONFIG || {}).adminApi || (window.LA_CONFIG || {}).api || "").replace(/\/+$/, "");
+
+  // Nouvelle tentative en cas d'échec réseau (lectures et connexion uniquement : jamais de double enregistrement)
+  function fetchRetry(url, init, tries) {
+    return fetch(url, init).catch(function (err) {
+      if (tries <= 1) throw err;
+      return new Promise(function (r) { setTimeout(r, 600); }).then(function () { return fetchRetry(url, init, tries - 1); });
+    });
+  }
   var API = API_BASE + "?r=";
   var TOKEN_KEY = "la_admin_token";
   var store = {
@@ -60,7 +68,10 @@
     if (opts.body) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(opts.body); }
     if (opts.form) init.body = opts.form;
     var url = API + route + (opts.query ? "&" + new URLSearchParams(opts.query).toString() : "");
-    return fetch(url, init).then(function (res) {
+    var safe = method === "GET" || route === "auth/login";
+    return (safe ? fetchRetry(url, init, 4) : fetch(url, init)).catch(function () {
+      throw new Error("Serveur injoignable, vérifiez votre connexion puis réessayez.");
+    }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
         if (res.status === 401 && route !== "auth/login") {
           S.token = ""; store.set("");

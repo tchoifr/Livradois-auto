@@ -111,9 +111,16 @@
   var ready = new Promise(function (resolve) {
     if (!API) { resolve("static"); return; }
     var ctrl = "AbortController" in window ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
-    fetch(API + "?r=vehicules", { signal: ctrl ? ctrl.signal : undefined, credentials: "omit" })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 10000);
+    var load = function (tries) {
+      return fetch(API + "?r=vehicules", { signal: ctrl ? ctrl.signal : undefined, credentials: "omit" })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .catch(function (err) {
+          if (tries <= 1 || (ctrl && ctrl.signal.aborted)) throw err;
+          return new Promise(function (r) { setTimeout(r, 600); }).then(function () { return load(tries - 1); });
+        });
+    };
+    load(3)
       .then(function (list) { apiStock = list; resolve("api"); })
       .catch(function () { apiStock = []; resolve("error"); })
       .then(function () { clearTimeout(timer); });
