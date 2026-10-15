@@ -47,13 +47,45 @@ function importDemo(): int
 }
 
 // ---------- Ligne de commande ----------
+// php setup.php                         → crée / met à jour les tables
+// php setup.php email@exemple.fr        → crée le compte (ou réinitialise son mot de passe), saisie masquée
+// php setup.php email@exemple.fr --demo → idem + importe les annonces de démonstration
 if (PHP_SAPI === 'cli') {
+    $ask = function (string $label): string {
+        echo $label;
+        $tty = DIRECTORY_SEPARATOR === '/' && function_exists('shell_exec');
+        if ($tty) {
+            @shell_exec('stty -echo 2>/dev/null');
+        }
+        $value = rtrim((string) fgets(STDIN), "\r\n");
+        if ($tty) {
+            @shell_exec('stty echo 2>/dev/null');
+            echo "\n";
+        }
+        return $value;
+    };
+
     Schema::migrate();
     echo "Tables à jour.\n";
-    if (isset($argv[1], $argv[2]) && !Schema::hasAdmin()) {
+    $args = array_values(array_filter(array_slice($argv, 1), fn($a) => !str_starts_with($a, '--')));
+    if (isset($args[0])) {
+        $email = mb_strtolower(trim($args[0]));
+        $password = $args[1] ?? $ask('Mot de passe (12 caractères minimum, invisible à la saisie) : ');
+        if (!isset($args[1]) && $ask('Confirmez le mot de passe : ') !== $password) {
+            echo "Erreur : les deux mots de passe ne correspondent pas.\n";
+            exit(1);
+        }
         try {
-            Auth::createAdmin($argv[1], $argv[2]);
-            echo "Administrateur créé : {$argv[1]}\n";
+            $existing = Db::one('SELECT id FROM la_admins WHERE email = ?', [$email]);
+            if ($existing) {
+                Auth::validatePassword($password);
+                Db::update('la_admins', ['password_hash' => Auth::hash($password)], (int) $existing['id']);
+                Db::exec('DELETE FROM la_sessions WHERE admin_id = ?', [(int) $existing['id']]);
+                echo "Mot de passe réinitialisé pour $email (sessions ouvertes fermées).\n";
+            } else {
+                Auth::createAdmin($email, $password);
+                echo "Compte administrateur créé : $email\n";
+            }
         } catch (HttpError $e) {
             echo 'Erreur : ' . $e->getMessage() . "\n";
             exit(1);
