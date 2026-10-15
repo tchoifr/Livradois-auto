@@ -4,12 +4,10 @@ window.LA.ready.then(function (source) {
   var LA = window.LA;
   var $ = LA.$, $$ = LA.$$, esc = LA.esc, icon = LA.icon, fmt = LA.fmt;
 
-  var EMAIL = "livradois.automobiles@gmail.com";
   var TYPES = {
     reservation: "Réserver ce véhicule", essai: "Demander un essai", offre: "Faire une offre", reprise: "Faire reprendre mon véhicule",
     financement: "Étudier un financement", alerte: "Être prévenu si le véhicule se libère", question: "Autre question",
   };
-  var HAS_API = !!((window.LA_CONFIG || {}).api);
   var PHONE = "04 73 95 85 46";
   var SITE = "https://livradois-automobiles.netlify.app/";
 
@@ -185,7 +183,7 @@ window.LA.ready.then(function (source) {
           '<label class="check full"><input type="checkbox" name="rgpd" required> <span class="form-note">J\'accepte que mes données soient utilisées pour être recontacté au sujet de ma demande (<a href="politique-de-confidentialite.html" style="text-decoration:underline">politique de confidentialité</a>). *</span></label>' +
           '<div class="hp" aria-hidden="true"><label>Ne pas remplir<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
           '<div class="full"><button class="btn btn--primary btn--lg btn--block" type="submit" data-submit>' + icon("mail") + "Envoyer ma demande</button></div>" +
-          '<p class="form-note full">' + (HAS_API ? "Votre demande est transmise directement au garage, qui vous recontacte rapidement." : "Votre messagerie s'ouvrira avec votre demande pré-remplie, il vous suffira de l'envoyer.") + "</p>" +
+          '<p class="form-note full">Votre demande est transmise directement au garage, qui vous recontacte rapidement.</p>' +
           '<p class="field__error full" data-form-error hidden></p>' +
           '<div class="form-success full" data-success hidden>' + icon("check") + "<span data-success-text></span></div>" +
         "</form>" +
@@ -351,17 +349,12 @@ window.LA.ready.then(function (source) {
       msgTouched = false;
       onTypeChange();
     }).catch(function (err) {
-      if (err.status === 422 || err.status === 429) {
-        errorBox.textContent = err.message;
-        errorBox.hidden = false;
-        return;
-      }
-      // Back-office non configuré ou injoignable : on passe par la messagerie du visiteur
-      var subject = TYPES[payload.type] + (isOffer ? " (" + fmt.price(montant) + ")" : "") + " – " + name + " (réf. " + v.ref + ")";
-      var body = payload.message + (isOffer ? "\n\nMon offre : " + fmt.price(montant) : "") + "\n\n— \nNom : " + payload.nom + "\nTéléphone : " + payload.tel +
-        (payload.email ? "\nE-mail : " + payload.email : "") + "\nAnnonce : " + SITE + "vehicule.html?id=" + v.id;
-      window.location.href = "mailto:" + EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-      done("Votre messagerie va s'ouvrir avec la demande pré-remplie. Si rien ne se passe, écrivez-nous à " + EMAIL + " ou appelez le " + PHONE + ".");
+      // Erreur de saisie ou limite atteinte : message du serveur ; sinon serveur injoignable.
+      // Jamais d'ouverture de la messagerie du visiteur : la saisie est conservée pour réessayer.
+      errorBox.textContent = err.status === 422 || err.status === 429 ? err.message
+        : "L'envoi n'a pas abouti. Vérifiez votre connexion et réessayez, ou appelez-nous au " + PHONE + ".";
+      errorBox.hidden = false;
+      errorBox.scrollIntoView({ behavior: "smooth", block: "center" });
     }).then(function () { btn.disabled = false; });
   });
 

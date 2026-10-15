@@ -133,10 +133,16 @@
   /** Envoie une demande / offre au back-office. Rejette si l'API n'est pas configurée ou injoignable. */
   function sendRequest(data) {
     if (!API) return Promise.reject(new Error("no-api"));
-    return fetch(API + "?r=demandes", {
-      method: "POST", credentials: "omit",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+    var post = function () {
+      return fetch(API + "?r=demandes", {
+        method: "POST", credentials: "omit",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    };
+    // Une nouvelle tentative si la connexion échoue (la requête n'a alors pas atteint le serveur)
+    return post().catch(function () {
+      return new Promise(function (r) { setTimeout(r, 800); }).then(post);
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
         if (!r.ok) { var e = new Error(body.error || "Erreur " + r.status); e.status = r.status; throw e; }
