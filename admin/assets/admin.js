@@ -52,6 +52,7 @@
 
   /* ---------- API ---------- */
   function api(route, opts) {
+    if (window.LA_DEMO_API) return window.LA_DEMO_API(route, opts || {}); // mode démonstration (assets/demo.js)
     opts = opts || {};
     var method = opts.method || (opts.body || opts.form ? "POST" : "GET");
     var init = { method: method, credentials: "omit", cache: "no-store", headers: {} };
@@ -114,6 +115,7 @@
   function showApp() {
     $("#login").hidden = true;
     $("#app").hidden = false;
+    $("[data-demo-banner]").hidden = !window.LA_DEMO_API;
     $("[data-user]").textContent = (S.user.name ? S.user.name + " · " : "") + S.user.email;
     $("[data-site-link]").href = S.siteUrl || "#";
     refreshCounts();
@@ -573,7 +575,7 @@
     if (side.classList.contains("is-open") && !side.contains(e.target)) side.classList.remove("is-open");
   });
 
-  if (!API_BASE) {
+  if (!API_BASE && !window.LA_DEMO_API) {
     showLogin();
     $("#login-config").hidden = false;
     $$("#login-form input, #login-form button").forEach(function (el) { el.disabled = true; });

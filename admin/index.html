@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Back-office – Livradois Automobiles</title>
   <link rel="icon" href="assets/favicon.ico">
@@ -29,7 +29,10 @@
       <p class="alert" id="login-error" role="alert" hidden></p>
       <button class="btn btn--primary btn--block" type="submit"><svg class="i"><use href="assets/icons.svg#lock"/></svg>Se connecter</button>
       <p class="login__note"><svg class="i i--sm"><use href="assets/icons.svg#shield"/></svg>Connexion chiffrée · session fermée après 2 h d'inactivité</p>
-      <p class="alert" id="login-config" hidden>Le dashboard n'est pas encore relié à l'API : renseignez l'adresse de l'API dans <code>js/config.js</code>.</p>
+      <div id="login-config" hidden style="display:grid;gap:10px">
+        <p class="alert">Le dashboard n'est pas encore relié à son serveur (API OVH en cours d'installation).</p>
+        <a class="btn btn--ghost btn--block" href="?demo=1">Voir la démo avec des données fictives</a>
+      </div>
     </form>
   </main>
 
@@ -50,6 +53,7 @@
       </div>
     </aside>
     <div class="main">
+      <p class="demo-banner" data-demo-banner hidden>Mode démonstration : données fictives, rien n'est enregistré. <a href="./">Quitter la démo</a></p>
       <header class="topbar">
         <button class="icon-btn menu-btn" type="button" data-menu aria-label="Menu"><svg class="i"><use href="assets/icons.svg#menu"/></svg></button>
         <h1 data-title>Tableau de bord</h1>
@@ -69,6 +73,8 @@
   </dialog>
 
   <script src="../js/config.js"></script>
+  <script src="../js/vehicules-data.js"></script>
+  <script src="assets/demo.js"></script>
   <script src="assets/admin.js"></script>
 </body>
 
