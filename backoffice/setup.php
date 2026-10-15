@@ -142,7 +142,7 @@ body{font:16px/1.5 system-ui,sans-serif;background:#faf8f5;color:#1a1d23;display
 form,.box{background:#fff;border:1px solid #e8e4dd;border-radius:16px;padding:32px;width:100%;max-width:420px;display:grid;gap:14px}
 h1{font-size:22px;margin:0}label{font-weight:600;font-size:14px;display:grid;gap:6px}
 input[type=text],input[type=email],input[type=password]{padding:12px;border:1.5px solid #e8e4dd;border-radius:10px;font:inherit}
-button,a.btn{background:#d63f00;color:#fff;border:0;border-radius:999px;padding:14px;font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
+button,a.btn{background:#0f6b78;color:#fff;border:0;border-radius:999px;padding:14px;font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
 .msg{padding:12px;border-radius:10px;background:#fff4dc;color:#7a4a00;font-size:14px}.check{display:flex;gap:8px;align-items:center;font-weight:500}
 </style>
 </head>
