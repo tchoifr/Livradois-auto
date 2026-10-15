@@ -5,14 +5,22 @@ declare(strict_types=1);
 final class Schema
 {
     private const TABLES = [
-        'admins' => '
+        'la_admins' => '
             id {ID},
             email VARCHAR(190) NOT NULL UNIQUE,
             name VARCHAR(120) NOT NULL DEFAULT \'\',
             password_hash VARCHAR(255) NOT NULL,
             created_at DATETIME NOT NULL,
             last_login_at DATETIME NULL',
-        'vehicules' => '
+        'la_sessions' => '
+            id {ID},
+            admin_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE,
+            ip VARCHAR(64) NOT NULL DEFAULT \'\',
+            user_agent VARCHAR(200) NOT NULL DEFAULT \'\',
+            created_at DATETIME NOT NULL,
+            last_seen_at DATETIME NOT NULL{IDX:idx_sessions_admin:admin_id}',
+        'la_vehicules' => '
             id {ID},
             slug VARCHAR(160) NOT NULL UNIQUE,
             ref VARCHAR(40) NOT NULL DEFAULT \'\',
@@ -45,7 +53,7 @@ final class Schema
             publie_le DATE NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL{IDX:idx_vehicules_statut:statut}',
-        'demandes' => '
+        'la_demandes' => '
             id {ID},
             vehicule_id INT NULL,
             vehicule_titre VARCHAR(200) NOT NULL DEFAULT \'\',
@@ -59,7 +67,7 @@ final class Schema
             ip VARCHAR(64) NOT NULL DEFAULT \'\',
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL{IDX:idx_demandes_vehicule:vehicule_id}{IDX:idx_demandes_statut:statut}',
-        'events' => '
+        'la_events' => '
             id {ID},
             kind VARCHAR(20) NOT NULL,
             ip VARCHAR(64) NOT NULL,
@@ -91,7 +99,7 @@ final class Schema
     public static function hasAdmin(): bool
     {
         try {
-            return (int) Db::value('SELECT COUNT(*) FROM admins') > 0;
+            return (int) Db::value('SELECT COUNT(*) FROM la_admins') > 0;
         } catch (PDOException $e) {
             return false;
         }

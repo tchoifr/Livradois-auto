@@ -52,7 +52,7 @@ final class Requests
         }
         $titre = $vehicule ? trim("{$vehicule['marque']} {$vehicule['modele']} {$vehicule['version']}") . " (réf. {$vehicule['ref']})" : '';
 
-        $id = Db::insert('demandes', [
+        $id = Db::insert('la_demandes', [
             'vehicule_id' => $vehicule ? (int) $vehicule['id'] : null,
             'vehicule_titre' => mb_substr($titre, 0, 200),
             'type' => $type,
@@ -85,7 +85,7 @@ final class Requests
             . ($titre ? "Véhicule : $titre\n" : '')
             . ($montant ? 'Offre : ' . number_format($montant, 0, ',', ' ') . " €\n" : '')
             . "Nom : $nom\nTéléphone : $tel\n" . ($email ? "E-mail : $email\n" : '')
-            . "\nMessage :\n$message\n\n— Gérer les demandes : " . rtrim((string) cfg('backoffice_url', ''), '/') . "/\n";
+            . "\nMessage :\n$message\n\n— Gérer les demandes : " . cfg('site_url', '') . "admin/#/demandes\n";
         $headers = "Content-Type: text/plain; charset=UTF-8\r\n";
         $from = cfg('mail_from');
         if ($from) {
@@ -114,7 +114,7 @@ final class Requests
             $params[] = $q['statut'];
         }
         $sql = 'SELECT d.*, v.slug, v.marque, v.modele, v.prix, v.photos, v.statut AS vehicule_statut
-            FROM demandes d LEFT JOIN vehicules v ON v.id = d.vehicule_id'
+            FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id'
             . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
             . ' ORDER BY d.created_at DESC, d.id DESC LIMIT 500';
         return array_map(function ($r) {
@@ -148,29 +148,29 @@ final class Requests
         if (!in_array($statut, self::STATUTS, true)) {
             Http::fail(422, 'Statut invalide.');
         }
-        if (!Db::exec('UPDATE demandes SET statut = ?, updated_at = ? WHERE id = ?', [$statut, Db::now(), $id])) {
+        if (!Db::exec('UPDATE la_demandes SET statut = ?, updated_at = ? WHERE id = ?', [$statut, Db::now(), $id])) {
             Http::fail(404, 'Demande introuvable.');
         }
     }
 
     public static function delete(int $id): void
     {
-        Db::exec('DELETE FROM demandes WHERE id = ?', [$id]);
+        Db::exec('DELETE FROM la_demandes WHERE id = ?', [$id]);
     }
 
     public static function stats(): array
     {
         $count = fn($sql, $p = []) => (int) Db::value($sql, $p);
         return [
-            'enLigne' => $count("SELECT COUNT(*) FROM vehicules WHERE statut = 'disponible'"),
-            'reserves' => $count("SELECT COUNT(*) FROM vehicules WHERE statut = 'reserve'"),
-            'brouillons' => $count("SELECT COUNT(*) FROM vehicules WHERE statut = 'brouillon'"),
-            'vendus' => $count("SELECT COUNT(*) FROM vehicules WHERE statut = 'vendu'"),
-            'valeurStock' => $count("SELECT COALESCE(SUM(prix), 0) FROM vehicules WHERE statut IN ('disponible', 'reserve')"),
-            'demandesNouvelles' => $count("SELECT COUNT(*) FROM demandes WHERE statut = 'nouvelle'"),
-            'offresOuvertes' => $count("SELECT COUNT(*) FROM demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours')"),
-            'annoncesAvecOffres' => $count("SELECT COUNT(DISTINCT vehicule_id) FROM demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours') AND vehicule_id IS NOT NULL"),
-            'demandes30j' => $count('SELECT COUNT(*) FROM demandes WHERE created_at >= ?', [date('Y-m-d H:i:s', time() - 86400 * 30)]),
+            'enLigne' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'disponible'"),
+            'reserves' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'reserve'"),
+            'brouillons' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'brouillon'"),
+            'vendus' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'vendu'"),
+            'valeurStock' => $count("SELECT COALESCE(SUM(prix), 0) FROM la_vehicules WHERE statut IN ('disponible', 'reserve')"),
+            'demandesNouvelles' => $count("SELECT COUNT(*) FROM la_demandes WHERE statut = 'nouvelle'"),
+            'offresOuvertes' => $count("SELECT COUNT(*) FROM la_demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours')"),
+            'annoncesAvecOffres' => $count("SELECT COUNT(DISTINCT vehicule_id) FROM la_demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours') AND vehicule_id IS NOT NULL"),
+            'demandes30j' => $count('SELECT COUNT(*) FROM la_demandes WHERE created_at >= ?', [date('Y-m-d H:i:s', time() - 86400 * 30)]),
         ];
     }
 }

@@ -2,49 +2,42 @@
 declare(strict_types=1);
 
 /*
- * API du back-office Livradois Automobiles
+ * API du back-office Livradois Automobiles (hébergée sur OVH)
  *   Public  : GET  api.php?r=vehicules          → annonces en ligne
  *             POST api.php?r=demandes           → demande / offre d'un client
- *   Admin   : routes « auth/… » et « admin/… » (session + jeton CSRF)
+ *   Admin   : routes « auth/… » et « admin/… », jeton dans l'en-tête X-LA-Token
+ * Appelée depuis le site et le dashboard publiés sur GitHub Pages (origines listées dans config.local.php).
  */
 
 require __DIR__ . '/lib/bootstrap.php';
 
 Http::securityHeaders();
+Http::cors();
 $route = trim((string) ($_GET['r'] ?? ''), '/');
 $method = Http::method();
 
+if ($method === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+
 try {
-    // ---------- Routes publiques (appelées par le site) ----------
-    if ($route === 'vehicules' || $route === 'demandes') {
-        Http::cors();
-        if ($method === 'OPTIONS') {
-            http_response_code(204);
-            exit;
-        }
-        if ($route === 'vehicules' && $method === 'GET') {
-            header('Cache-Control: public, max-age=60');
-            http_response_code(200);
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(Vehicles::listPublic(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            exit;
-        }
-        if ($route === 'demandes' && $method === 'POST') {
-            Http::json(Requests::create(Http::body()), 201);
-            exit;
-        }
-        Http::fail(405, 'Méthode non autorisée.');
+    // ---------- Routes publiques (site) ----------
+    if ($route === 'vehicules' && $method === 'GET') {
+        header('Cache-Control: public, max-age=60');
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(Vehicles::listPublic(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if ($route === 'demandes' && $method === 'POST') {
+        Http::json(Requests::create(Http::body()), 201);
+        exit;
     }
 
-    // ---------- Routes du dashboard (même origine uniquement) ----------
-    Auth::start();
-
+    // ---------- Connexion ----------
     if ($route === 'auth/me') {
-        $u = Auth::user();
         Http::json([
-            'user' => $u,
-            'csrf' => $u ? Auth::csrf() : null,
-            'siteUrl' => cfg('site_url', ''),
+            'user' => Auth::user(),
             'listes' => [
                 'energies' => Vehicles::ENERGIES, 'boites' => Vehicles::BOITES, 'carrosseries' => Vehicles::CARROSSERIES,
                 'types' => Requests::TYPES, 'statutsDemande' => Requests::STATUTS,
@@ -52,29 +45,25 @@ try {
         ]);
         exit;
     }
-
     if ($route === 'auth/login' && $method === 'POST') {
         $in = Http::body();
-        $user = Auth::login((string) ($in['email'] ?? ''), (string) ($in['password'] ?? ''));
-        Http::json(['user' => $user, 'csrf' => Auth::csrf()]);
+        Http::json(Auth::login((string) ($in['email'] ?? ''), (string) ($in['password'] ?? '')));
         exit;
     }
 
+    // ---------- Routes du dashboard (jeton obligatoire) ----------
     $user = Auth::requireUser();
-    if ($method !== 'GET') {
-        Auth::checkCsrf();
-    }
     $in = $method === 'GET' ? $_GET : Http::body();
     $id = (int) ($in['id'] ?? 0);
 
     switch ("$method $route") {
         case 'POST auth/logout':
-            Auth::destroy();
+            Auth::logout();
             Http::json(['ok' => true]);
             break;
         case 'POST auth/password':
             Auth::changePassword($user, (string) ($in['current'] ?? ''), (string) ($in['new'] ?? ''));
-            Http::json(['ok' => true, 'csrf' => Auth::csrf()]);
+            Http::json(['ok' => true]);
             break;
 
         case 'GET admin/stats':

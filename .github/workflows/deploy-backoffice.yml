@@ -1,0 +1,65 @@
+name: Déployer l'API du back-office (OVH)
+
+# Lancement manuel uniquement : Actions → « Déployer l'API du back-office » → Run workflow
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backoffice
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SSH_TARGET: ${{ secrets.OVH_SSH_USER }}@${{ secrets.OVH_SSH_HOST }}
+      API_DIR: ${{ vars.OVH_API_DIR }}
+      PHP_BIN: ${{ vars.OVH_PHP_BIN || 'php' }}
+      API_URL: ${{ vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérification de la syntaxe PHP
+        run: find backoffice -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Clé SSH (empreinte du serveur épinglée)
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.OVH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_KEY" || { echo "::error::Secret OVH_SSH_KEY manquant (environnement production)"; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host *\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' > ~/.ssh/config
+
+      - name: Vérification du serveur
+        run: |
+          ssh "$SSH_TARGET" "test -d '$API_DIR' && test -f '$API_DIR/config.local.php' && $PHP_BIN -r 'exit(PHP_VERSION_ID >= 80100 ? 0 : 1);'" \
+            || { echo "::error::Dossier '$API_DIR' ou '$API_DIR/config.local.php' absent sur le serveur, ou PHP < 8.1"; exit 1; }
+
+      - name: Envoi de l'API
+        # config.local.php (mots de passe) et les photos envoyées ne sont jamais écrasés ni supprimés
+        run: |
+          rsync -rlz --delete --chmod=D755,F644 \
+            --exclude 'config.local.php' --exclude 'uploads/vehicules/*' --exclude 'README.md' --exclude '*.sqlite' \
+            backoffice/ "$SSH_TARGET:$API_DIR/"
+          printf '%s\n' "$GITHUB_SHA" | ssh "$SSH_TARGET" "cat > '$API_DIR/REVISION'"
+
+      - name: Mise à jour des tables
+        run: ssh "$SSH_TARGET" "cd '$API_DIR' && $PHP_BIN setup.php"
+
+      - name: Contrôle de l'API
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/api.php?r=vehicules")
+          echo "GET /api.php?r=vehicules → HTTP $code"
+          test "$code" = "200"
+
+      - name: Suppression de la clé SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

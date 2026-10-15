@@ -1,8 +1,9 @@
 <?php
 /*
- * Modèle de configuration du back-office.
- * Copiez ce fichier en « config.local.php » sur le serveur et remplissez-le.
- * config.local.php n'est jamais versionné (voir .gitignore) et n'est pas accessible depuis le web (.htaccess).
+ * Modèle de configuration de l'API du back-office.
+ * Sur le serveur, ce fichier est copié en « config.local.php » et rempli.
+ * config.local.php n'est jamais versionné (voir .gitignore), jamais écrasé par le déploiement,
+ * et inaccessible depuis le web (.htaccess).
  */
 return [
     // Base MySQL OVH (Hébergement > Bases de données)
@@ -12,13 +13,13 @@ return [
         'pass' => 'MOT_DE_PASSE',
     ],
 
-    // Adresse publique de ce dossier (sans « / » final) — sert aux URL des photos
-    'backoffice_url' => 'https://www.exemple.fr/backoffice',
+    // Adresse publique de ce dossier sur OVH (sans « / » final) — sert aux URL des photos
+    'backoffice_url' => 'https://livradois-api.byhnex.com',
 
-    // Adresse du site public (aperçu des annonces depuis le dashboard)
+    // Adresse du site public ; le dashboard est à site_url + « admin/ »
     'site_url' => 'https://tchoifr.github.io/Livradois-auto/',
 
-    // Sites autorisés à lire les annonces et envoyer des demandes
+    // Origines autorisées à appeler l'API (site + dashboard)
     'allowed_origins' => [
         'https://tchoifr.github.io',
         'https://livradois-automobiles.netlify.app',
@@ -26,8 +27,9 @@ return [
 
     // Notification e-mail à chaque nouvelle demande (laisser vide pour désactiver)
     'notify_email' => 'livradois.automobiles@gmail.com',
-    'mail_from' => 'Site Livradois Automobiles <no-reply@exemple.fr>',
+    'mail_from' => 'Site Livradois Automobiles <no-reply@byhnex.com>',
 
-    // Clé demandée par setup.php pour créer le premier compte (32 caractères aléatoires minimum)
+    // Clé demandée par setup.php pour créer le premier compte (32 caractères aléatoires minimum).
+    // À vider une fois le compte créé.
     'setup_key' => 'CHANGER_MOI_AVEC_UNE_LONGUE_CLE_ALEATOIRE',
 ];

@@ -2,8 +2,15 @@
 (function () {
   "use strict";
 
-  var API = "api.php?r=";
-  var S = { user: null, csrf: null, siteUrl: "", listes: {}, vehicules: [], dirty: false };
+  // Adresse de l'API (OVH), partagée avec le site dans js/config.js
+  var API_BASE = ((window.LA_CONFIG || {}).api || "").replace(/\/+$/, "");
+  var API = API_BASE + "?r=";
+  var TOKEN_KEY = "la_admin_token";
+  var store = {
+    get: function () { try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } },
+    set: function (t) { try { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* stockage indisponible */ } },
+  };
+  var S = { user: null, token: store.get(), siteUrl: new URL("../", location.href).href, listes: {}, vehicules: [], dirty: false };
 
   var STATUTS = { disponible: "En ligne", reserve: "Réservé", brouillon: "Brouillon", vendu: "Vendu" };
   var DSTATUTS = { nouvelle: "Nouvelle", en_cours: "En cours", acceptee: "Acceptée", refusee: "Refusée", traitee: "Traitée" };
@@ -47,14 +54,15 @@
   function api(route, opts) {
     opts = opts || {};
     var method = opts.method || (opts.body || opts.form ? "POST" : "GET");
-    var init = { method: method, credentials: "same-origin", headers: {} };
-    if (method !== "GET") init.headers["X-CSRF-Token"] = S.csrf || "";
+    var init = { method: method, credentials: "omit", cache: "no-store", headers: {} };
+    if (S.token) init.headers["X-LA-Token"] = S.token;
     if (opts.body) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(opts.body); }
     if (opts.form) init.body = opts.form;
     var url = API + route + (opts.query ? "&" + new URLSearchParams(opts.query).toString() : "");
     return fetch(url, init).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
         if (res.status === 401 && route !== "auth/login") {
+          S.token = ""; store.set("");
           S.dirty = false;
           showLogin("Votre session a expiré, reconnectez-vous.");
           throw new Error("Session expirée.");
@@ -536,7 +544,7 @@
       if (f.new.value !== f.confirm.value) { toast("Les deux mots de passe ne correspondent pas.", true); return; }
       if (f.new.value.length < 12) { toast("Le nouveau mot de passe doit contenir au moins 12 caractères.", true); return; }
       api("auth/password", { body: { current: f.current.value, new: f.new.value } }).then(function (r) {
-        S.csrf = r.csrf; f.reset(); toast("Mot de passe mis à jour");
+        f.reset(); toast("Mot de passe mis à jour · les autres sessions ont été fermées");
       }).catch(fail);
     });
   }
@@ -548,7 +556,7 @@
     err.hidden = true;
     btn.disabled = true;
     api("auth/login", { body: { email: f.email.value, password: f.password.value } }).then(function (r) {
-      S.user = r.user; S.csrf = r.csrf; f.password.value = "";
+      S.user = r.user; S.token = r.token; store.set(r.token); f.password.value = "";
       showApp();
     }).catch(function (ex) {
       err.textContent = ex.message; err.hidden = false;
@@ -557,7 +565,7 @@
   $("[data-logout]").addEventListener("click", function () {
     if (S.dirty && !window.confirm("Des modifications ne sont pas enregistrées. Se déconnecter quand même ?")) return;
     S.dirty = false;
-    api("auth/logout", { method: "POST" }).catch(function () {}).then(function () { showLogin(); });
+    api("auth/logout", { method: "POST" }).catch(function () {}).then(function () { S.token = ""; store.set(""); showLogin(); });
   });
   $("[data-menu]").addEventListener("click", function (e) { e.stopPropagation(); $("#side").classList.toggle("is-open"); });
   document.addEventListener("click", function (e) {
@@ -565,9 +573,14 @@
     if (side.classList.contains("is-open") && !side.contains(e.target)) side.classList.remove("is-open");
   });
 
+  if (!API_BASE) {
+    showLogin();
+    $("#login-config").hidden = false;
+    $$("#login-form input, #login-form button").forEach(function (el) { el.disabled = true; });
+    return;
+  }
   api("auth/me").then(function (r) {
-    S.siteUrl = r.siteUrl || "";
     S.listes = r.listes || {};
-    if (r.user) { S.user = r.user; S.csrf = r.csrf; showApp(); } else showLogin();
+    if (r.user) { S.user = r.user; showApp(); } else { S.token = ""; store.set(""); showLogin(); }
   }).catch(function () { showLogin("Serveur injoignable. Réessayez dans un instant."); });
 })();

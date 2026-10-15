@@ -25,7 +25,7 @@ function importDemo(): int
         if (Vehicles::findBySlug($v['id'])) {
             continue;
         }
-        Db::insert('vehicules', [
+        Db::insert('la_vehicules', [
             'slug' => $v['id'], 'ref' => $v['ref'], 'statut' => $v['statut'],
             'marque' => $v['marque'], 'modele' => $v['modele'], 'version' => $v['version'],
             'annee' => $v['annee'], 'mise_en_circulation' => $v['miseEnCirculation'] ?? '', 'km' => $v['km'],

@@ -55,15 +55,15 @@ final class Http
             || (($_SERVER['SERVER_PORT'] ?? '') === '443');
     }
 
-    /** Autorise uniquement les origines du site public (lecture du stock et envoi des demandes). */
+    /** Autorise uniquement les origines du site et du dashboard (config « allowed_origins »). Aucun cookie n'est utilisé. */
     public static function cors(): void
     {
+        header('Vary: Origin');
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
         if ($origin !== '' && in_array($origin, cfg('allowed_origins', []), true)) {
             header('Access-Control-Allow-Origin: ' . $origin);
-            header('Vary: Origin');
             header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-            header('Access-Control-Allow-Headers: Content-Type');
+            header('Access-Control-Allow-Headers: Content-Type, X-LA-Token');
             header('Access-Control-Max-Age: 86400');
         }
     }
@@ -82,16 +82,16 @@ final class Http
     public static function tooMany(string $kind, int $max, int $seconds, ?string $subject = null): bool
     {
         $since = date('Y-m-d H:i:s', time() - $seconds);
-        $sql = 'SELECT COUNT(*) FROM events WHERE kind = ? AND created_at >= ? AND ' . ($subject === null ? 'ip = ?' : 'subject = ?');
+        $sql = 'SELECT COUNT(*) FROM la_events WHERE kind = ? AND created_at >= ? AND ' . ($subject === null ? 'ip = ?' : 'subject = ?');
         return (int) Db::value($sql, [$kind, $since, $subject ?? self::ip()]) >= $max;
     }
 
     public static function record(string $kind, string $subject = ''): void
     {
-        Db::insert('events', ['kind' => $kind, 'ip' => self::ip(), 'subject' => substr($subject, 0, 190), 'created_at' => Db::now()]);
+        Db::insert('la_events', ['kind' => $kind, 'ip' => self::ip(), 'subject' => substr($subject, 0, 190), 'created_at' => Db::now()]);
         // Nettoyage occasionnel des anciens événements
         if (random_int(1, 50) === 1) {
-            Db::exec('DELETE FROM events WHERE created_at < ?', [date('Y-m-d H:i:s', time() - 86400 * 7)]);
+            Db::exec('DELETE FROM la_events WHERE created_at < ?', [date('Y-m-d H:i:s', time() - 86400 * 7)]);
         }
     }
 }

@@ -51,14 +51,14 @@ final class Vehicles
     /** Annonces visibles sur le site : disponibles et réservées. */
     public static function listPublic(): array
     {
-        $rows = Db::all("SELECT * FROM vehicules WHERE statut IN ('disponible', 'reserve') ORDER BY COALESCE(publie_le, created_at) DESC, id DESC");
+        $rows = Db::all("SELECT * FROM la_vehicules WHERE statut IN ('disponible', 'reserve') ORDER BY COALESCE(publie_le, created_at) DESC, id DESC");
         return array_map([self::class, 'toPublic'], $rows);
     }
 
     /** Liste du dashboard, avec le nombre de demandes et d'offres. */
     public static function listAdmin(): array
     {
-        $rows = Db::all('SELECT * FROM vehicules ORDER BY updated_at DESC, id DESC');
+        $rows = Db::all('SELECT * FROM la_vehicules ORDER BY updated_at DESC, id DESC');
         $stats = [];
         foreach (Db::all("SELECT vehicule_id,
                 COUNT(*) AS demandes,
@@ -66,7 +66,7 @@ final class Vehicles
                 SUM(CASE WHEN type = 'offre' THEN 1 ELSE 0 END) AS offres,
                 SUM(CASE WHEN type = 'offre' AND statut IN ('nouvelle', 'en_cours') THEN 1 ELSE 0 END) AS offres_ouvertes,
                 MAX(CASE WHEN type = 'offre' THEN montant END) AS meilleure_offre
-            FROM demandes WHERE vehicule_id IS NOT NULL GROUP BY vehicule_id") as $s) {
+            FROM la_demandes WHERE vehicule_id IS NOT NULL GROUP BY vehicule_id") as $s) {
             $stats[(int) $s['vehicule_id']] = $s;
         }
         return array_map(function ($r) use ($stats) {
@@ -86,7 +86,7 @@ final class Vehicles
 
     public static function get(int $id): array
     {
-        $r = Db::one('SELECT * FROM vehicules WHERE id = ?', [$id]);
+        $r = Db::one('SELECT * FROM la_vehicules WHERE id = ?', [$id]);
         if (!$r) {
             Http::fail(404, 'Annonce introuvable.');
         }
@@ -95,14 +95,14 @@ final class Vehicles
 
     public static function findBySlug(string $slug): ?array
     {
-        return Db::one('SELECT * FROM vehicules WHERE slug = ?', [$slug]);
+        return Db::one('SELECT * FROM la_vehicules WHERE slug = ?', [$slug]);
     }
 
     /** Création ou mise à jour depuis le formulaire du dashboard. */
     public static function save(array $in): array
     {
         $id = isset($in['dbId']) ? (int) $in['dbId'] : 0;
-        $existing = $id ? Db::one('SELECT * FROM vehicules WHERE id = ?', [$id]) : null;
+        $existing = $id ? Db::one('SELECT * FROM la_vehicules WHERE id = ?', [$id]) : null;
         if ($id && !$existing) {
             Http::fail(404, 'Annonce introuvable.');
         }
@@ -169,12 +169,12 @@ final class Vehicles
         }
 
         if ($existing) {
-            Db::update('vehicules', $data, $id);
+            Db::update('la_vehicules', $data, $id);
         } else {
             $data['created_at'] = Db::now();
             $data['slug'] = 'tmp-' . bin2hex(random_bytes(6));
-            $id = Db::insert('vehicules', $data);
-            Db::update('vehicules', [
+            $id = Db::insert('la_vehicules', $data);
+            Db::update('la_vehicules', [
                 'slug' => self::slugify($data['marque'] . ' ' . $data['modele'] . ' ' . $data['annee']) . '-' . $id,
                 'ref' => 'LA-' . (2400 + $id),
             ], $id);
@@ -187,7 +187,7 @@ final class Vehicles
         if (!in_array($statut, self::STATUTS, true)) {
             Http::fail(422, 'Statut invalide.');
         }
-        $r = Db::one('SELECT publie_le FROM vehicules WHERE id = ?', [$id]);
+        $r = Db::one('SELECT publie_le FROM la_vehicules WHERE id = ?', [$id]);
         if (!$r) {
             Http::fail(404, 'Annonce introuvable.');
         }
@@ -195,20 +195,20 @@ final class Vehicles
         if (in_array($statut, ['disponible', 'reserve'], true) && !$r['publie_le']) {
             $data['publie_le'] = date('Y-m-d');
         }
-        Db::update('vehicules', $data, $id);
+        Db::update('la_vehicules', $data, $id);
         return self::get($id);
     }
 
     public static function delete(int $id): void
     {
-        $r = Db::one('SELECT photos FROM vehicules WHERE id = ?', [$id]);
+        $r = Db::one('SELECT photos FROM la_vehicules WHERE id = ?', [$id]);
         if (!$r) {
             Http::fail(404, 'Annonce introuvable.');
         }
         foreach (json_decode($r['photos'] ?: '[]', true) ?: [] as $p) {
             Uploads::deleteLocal($p);
         }
-        Db::exec('DELETE FROM vehicules WHERE id = ?', [$id]);
+        Db::exec('DELETE FROM la_vehicules WHERE id = ?', [$id]);
     }
 
     public static function slugify(string $s): string
