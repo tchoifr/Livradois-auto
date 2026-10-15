@@ -8,3 +8,8 @@ config.local.php
 *.ppk
 id_rsa*
 .vscode/sftp.json
+
+# Back-office : photos uploadées et bases de test locales
+backoffice/uploads/vehicules/*
+!backoffice/uploads/vehicules/.gitkeep
+*.sqlite

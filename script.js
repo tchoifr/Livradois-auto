@@ -53,6 +53,8 @@
   /* ---------- Véhicules : helpers partagés ---------- */
   function photo(v, i, small) {
     var p = v.photos[i || 0];
+    if (!p) return "public/assets/logo-footer.webp";
+    if (p.url) return small && p.urlSmall ? p.urlSmall : p.url;
     return "public/assets/vehicules/" + p.fichier + (small ? "-sm" : "") + ".webp";
   }
 
@@ -102,9 +104,43 @@
     "</article>";
   }
 
+  /* ---------- Stock : API du back-office si configurée, sinon js/vehicules-data.js ---------- */
+  var API = ((window.LA_CONFIG || {}).api || "").replace(/\/+$/, "");
+  var apiStock = null;
+
+  var ready = new Promise(function (resolve) {
+    if (!API) { resolve("static"); return; }
+    var ctrl = "AbortController" in window ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+    fetch(API + "?r=vehicules", { signal: ctrl ? ctrl.signal : undefined, credentials: "omit" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (list) { apiStock = list; resolve("api"); })
+      .catch(function () { apiStock = []; resolve("error"); })
+      .then(function () { clearTimeout(timer); });
+  });
+
   function stock() {
-    return (window.VEHICULES || []).filter(function (v) { return v.statut !== "vendu"; });
+    return (apiStock || window.VEHICULES || []).filter(function (v) { return v.statut !== "vendu"; });
   }
+
+  /** Envoie une demande / offre au back-office. Rejette si l'API n'est pas configurée ou injoignable. */
+  function sendRequest(data) {
+    if (!API) return Promise.reject(new Error("no-api"));
+    return fetch(API + "?r=demandes", {
+      method: "POST", credentials: "omit",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (!r.ok) { var e = new Error(body.error || "Erreur " + r.status); e.status = r.status; throw e; }
+        return body;
+      });
+    });
+  }
+
+  var unavailableHTML = '<div class="empty" style="grid-column:1/-1">' + icon("info") +
+    "<h3>Stock momentanément indisponible</h3><p>Nos annonces n'ont pas pu être chargées. Réessayez dans un instant ou appelez-nous au 04 73 95 85 46.</p>" +
+    '<a class="btn btn--primary" href="tel:0473958546">' + icon("phone") + "Appeler le garage</a></div>";
 
   /* ---------- Toast ---------- */
   var toastTimer;
@@ -227,6 +263,6 @@
   window.LA = {
     $: $, $$: $$, esc: esc, icon: icon, fmt: fmt, favs: favs,
     photo: photo, isNew: isNew, badges: badges, title: title, url: url, card: card, stock: stock,
-    toast: toast, observe: observe,
+    toast: toast, observe: observe, ready: ready, sendRequest: sendRequest, unavailableHTML: unavailableHTML,
   };
 })();

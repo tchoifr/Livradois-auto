@@ -1,0 +1,6 @@
+# GitHub Pages : le site public est servi tel quel.
+# Le back-office (PHP) est hébergé sur le serveur OVH : il n'est pas publié ici.
+exclude:
+  - backoffice
+  - bdd.txt
+  - "*.md"

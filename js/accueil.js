@@ -4,19 +4,32 @@
   var LA = window.LA;
   var $ = LA.$, $$ = LA.$$;
 
-  /* ---------- Dernières arrivées ---------- */
-  var featured = $("[data-featured]");
-  if (featured) {
-    var list = LA.stock()
-      .filter(function (v) { return v.statut === "disponible"; })
-      .sort(function (a, b) { return b.ajoutLe.localeCompare(a.ajoutLe); })
-      .slice(0, 4);
-    featured.innerHTML = list.map(LA.card).join("");
-  }
+  LA.ready.then(function (source) {
+    /* ---------- Dernières arrivées ---------- */
+    var featured = $("[data-featured]");
+    if (featured) {
+      var list = LA.stock()
+        .filter(function (v) { return v.statut === "disponible"; })
+        .sort(function (a, b) { return b.ajoutLe.localeCompare(a.ajoutLe); })
+        .slice(0, 4);
+      featured.innerHTML = source === "error" ? LA.unavailableHTML : list.map(LA.card).join("");
+    }
+    initQuickSearch();
+  });
 
   /* ---------- Recherche rapide : compteur dynamique ---------- */
-  var form = $("[data-quick-search]");
-  if (form) {
+  function initQuickSearch() {
+    var form = $("[data-quick-search]");
+    if (!form) return;
+    // Marques et carrosseries réellement présentes dans le stock
+    var fill = function (select, key) {
+      var current = select.value;
+      var values = LA.stock().map(function (v) { return v[key]; }).filter(function (x, i, a) { return a.indexOf(x) === i; }).sort(function (a, b) { return a.localeCompare(b, "fr"); });
+      select.innerHTML = select.options[0].outerHTML + values.map(function (x) { return '<option value="' + LA.esc(x) + '">' + LA.esc(x) + "</option>"; }).join("");
+      select.value = values.indexOf(current) !== -1 ? current : "";
+    };
+    fill(form.marque, "marque");
+    fill(form.carrosserie, "carrosserie");
     var count = $("[data-quick-count]", form);
     var update = function () {
       var marque = form.marque.value, carrosserie = form.carrosserie.value, prixMax = Number(form.prixMax.value) || Infinity;

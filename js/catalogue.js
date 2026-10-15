@@ -1,17 +1,28 @@
 /* Page « Nos véhicules » : filtres, tri, favoris, synchronisation avec l'URL */
-(function () {
+window.LA.ready.then(function (source) {
   "use strict";
   var LA = window.LA;
   var $ = LA.$, $$ = LA.$$, esc = LA.esc, icon = LA.icon, fmt = LA.fmt;
 
   var ALL = LA.stock();
+  if (!ALL.length) {
+    $$("[data-count]").forEach(function (el) { el.textContent = 0; });
+    $("[data-count-label]").textContent = "véhicule";
+    $("#filtres").hidden = true;
+    $(".catalog").style.gridTemplateColumns = "1fr";
+    $("[data-results]").innerHTML = source === "error" ? LA.unavailableHTML :
+      '<div class="empty" style="grid-column:1/-1">' + icon("car") + "<h3>Aucun véhicule en stock pour le moment</h3><p>De nouveaux arrivages sont en préparation. Contactez-nous : nous pouvons rechercher le véhicule idéal pour vous.</p>" +
+      '<a class="btn btn--primary" href="tel:0473958546">' + icon("phone") + "04 73 95 85 46</a></div>";
+    return;
+  }
   var PAGE = 12;
-  var CARROSSERIES = ["Citadine", "Compacte", "Berline", "SUV", "Break", "4x4", "Utilitaire"];
-  var ENERGIES = ["Essence", "Diesel", "Hybride", "Électrique"];
+  var CARROSSERIES = ["Citadine", "Compacte", "Berline", "SUV", "Break", "4x4", "Monospace", "Coupé", "Cabriolet", "Utilitaire"];
+  var ENERGIES = ["Essence", "Diesel", "Hybride", "Électrique", "GPL", "Autre"];
 
   var priceMinBound = Math.floor(Math.min.apply(null, ALL.map(function (v) { return v.prix; })) / 1000) * 1000;
   var priceMaxBound = Math.ceil(Math.max.apply(null, ALL.map(function (v) { return v.prix; })) / 1000) * 1000;
-  var kmBound = Math.ceil(Math.max.apply(null, ALL.map(function (v) { return v.km; })) / 10000) * 10000;
+  if (priceMaxBound <= priceMinBound) priceMaxBound = priceMinBound + 1000;
+  var kmBound = Math.max(10000, Math.ceil(Math.max.apply(null, ALL.map(function (v) { return v.km; })) / 10000) * 10000);
   var years = ALL.map(function (v) { return v.annee; }).filter(function (y, i, a) { return a.indexOf(y) === i; }).sort().reverse();
   var marques = ALL.map(function (v) { return v.marque; }).filter(function (m, i, a) { return a.indexOf(m) === i; }).sort(function (a, b) { return a.localeCompare(b, "fr"); });
 
@@ -287,4 +298,4 @@
 
   readURL();
   render();
-})();
+});

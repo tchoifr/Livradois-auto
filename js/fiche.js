@@ -1,16 +1,26 @@
-/* Fiche véhicule : galerie, caractéristiques, simulateur, demande de contact */
-(function () {
+/* Fiche véhicule : galerie, caractéristiques, simulateur, demande de contact / offre */
+window.LA.ready.then(function (source) {
   "use strict";
   var LA = window.LA;
   var $ = LA.$, $$ = LA.$$, esc = LA.esc, icon = LA.icon, fmt = LA.fmt;
 
   var EMAIL = "livradois.automobiles@gmail.com";
+  var TYPES = {
+    reservation: "Réserver ce véhicule", essai: "Demander un essai", offre: "Faire une offre", reprise: "Faire reprendre mon véhicule",
+    financement: "Étudier un financement", alerte: "Être prévenu si le véhicule se libère", question: "Autre question",
+  };
+  var HAS_API = !!((window.LA_CONFIG || {}).api);
   var PHONE = "04 73 95 85 46";
   var SITE = "https://livradois-automobiles.netlify.app/";
 
   var root = $("[data-fiche]");
   var id = new URLSearchParams(location.search).get("id");
   var v = LA.stock().filter(function (x) { return x.id === id; })[0];
+
+  if (source === "error") {
+    root.innerHTML = '<div class="container not-found">' + LA.unavailableHTML + "</div>";
+    return;
+  }
 
   if (!v) {
     document.title = "Véhicule introuvable | Livradois Automobiles";
@@ -132,11 +142,12 @@
           '<div class="buybox__price">' + price + "</div>" +
           (reserved ? '<p class="status-banner">' + icon("info") + "Ce véhicule est actuellement réservé. Contactez-nous pour être prévenu s'il se libère.</p>" : "") +
           '<div class="buybox__actions">' +
-            '<a class="btn btn--primary btn--lg btn--block" href="#demande" data-intent="' + (reserved ? "Être prévenu si le véhicule se libère" : "Réserver ce véhicule") + '">' + icon("key") + (reserved ? "Être prévenu" : "Je réserve ce véhicule") + "</a>" +
+            '<a class="btn btn--primary btn--lg btn--block" href="#demande" data-intent="' + (reserved ? "alerte" : "reservation") + '">' + icon("key") + (reserved ? "Être prévenu" : "Je réserve ce véhicule") + "</a>" +
+            (reserved ? "" : '<a class="btn btn--ghost btn--block" href="#demande" data-intent="offre">' + icon("hand-coins") + "Faire une offre</a>") +
             '<a class="btn btn--dark btn--block" href="tel:0473958546">' + icon("phone") + "Appeler le " + PHONE + "</a>" +
             '<div class="buybox__row">' +
-              '<a class="btn btn--ghost btn--sm" href="#demande" data-intent="Demander un essai">' + icon("car") + "Essai</a>" +
-              '<a class="btn btn--ghost btn--sm" href="#demande" data-intent="Faire reprendre mon véhicule">' + icon("refresh") + "Reprise</a>" +
+              '<a class="btn btn--ghost btn--sm" href="#demande" data-intent="essai">' + icon("car") + "Essai</a>" +
+              '<a class="btn btn--ghost btn--sm" href="#demande" data-intent="reprise">' + icon("refresh") + "Reprise</a>" +
             "</div>" +
             '<div class="buybox__row">' +
               '<button class="btn btn--ghost btn--sm fav-toggle" type="button" data-fav="' + esc(v.id) + '" aria-pressed="' + LA.favs.has(v.id) + '">' + icon("heart") + "Favori</button>" +
@@ -164,16 +175,19 @@
         "</div>" +
         '<form class="form-grid" data-request novalidate>' +
           '<div class="field full"><label for="objet">Votre demande</label><select class="select" id="objet" name="objet">' +
-            ["Réserver ce véhicule", "Demander un essai", "Faire reprendre mon véhicule", "Étudier un financement", "Être prévenu si le véhicule se libère", "Autre question"].map(function (o) { return "<option>" + o + "</option>"; }).join("") +
+            Object.keys(TYPES).map(function (k) { return '<option value="' + k + '">' + TYPES[k] + "</option>"; }).join("") +
           "</select></div>" +
+          '<div class="field full" data-offer-field hidden><label for="montant">Montant de votre offre (€) *</label><input class="input" id="montant" name="montant" type="number" min="100" step="100" inputmode="numeric" placeholder="ex. ' + fmt.num(Math.round(v.prix * 0.95 / 100) * 100) + '"></div>' +
           '<div class="field"><label for="nom">Nom et prénom *</label><input class="input" id="nom" name="nom" autocomplete="name" required></div>' +
           '<div class="field"><label for="tel">Téléphone *</label><input class="input" id="tel" name="tel" type="tel" autocomplete="tel" required></div>' +
           '<div class="field full"><label for="email">E-mail</label><input class="input" id="email" name="email" type="email" autocomplete="email"></div>' +
           '<div class="field full"><label for="message">Message</label><textarea class="textarea" id="message" name="message"></textarea></div>' +
           '<label class="check full"><input type="checkbox" name="rgpd" required> <span class="form-note">J\'accepte que mes données soient utilisées pour être recontacté au sujet de ma demande (<a href="politique-de-confidentialite.html" style="text-decoration:underline">politique de confidentialité</a>). *</span></label>' +
-          '<div class="full"><button class="btn btn--primary btn--lg btn--block" type="submit">' + icon("mail") + "Envoyer ma demande</button></div>" +
-          '<p class="form-note full">Votre messagerie s\'ouvrira avec votre demande pré-remplie, il vous suffira de l\'envoyer.</p>' +
-          '<div class="form-success full" data-success hidden>' + icon("check") + "<span>Votre messagerie va s'ouvrir avec la demande pré-remplie. Si rien ne se passe, écrivez-nous à " + EMAIL + " ou appelez le " + PHONE + ".</span></div>" +
+          '<div class="hp" aria-hidden="true"><label>Ne pas remplir<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
+          '<div class="full"><button class="btn btn--primary btn--lg btn--block" type="submit" data-submit>' + icon("mail") + "Envoyer ma demande</button></div>" +
+          '<p class="form-note full">' + (HAS_API ? "Votre demande est transmise directement au garage, qui vous recontacte rapidement." : "Votre messagerie s'ouvrira avec votre demande pré-remplie, il vous suffira de l'envoyer.") + "</p>" +
+          '<p class="field__error full" data-form-error hidden></p>' +
+          '<div class="form-success full" data-success hidden>' + icon("check") + "<span data-success-text></span></div>" +
         "</form>" +
       "</div>" +
     "</div></section>" +
@@ -184,7 +198,7 @@
       '<div class="vgrid vgrid--4" data-similar></div>' +
     "</div></section>" +
 
-    '<div class="mobile-buy" data-mobile-buy>' + price + '<a class="btn btn--primary" href="#demande" data-intent="Réserver ce véhicule">' + icon("mail") + "Contacter</a></div>" +
+    '<div class="mobile-buy" data-mobile-buy>' + price + '<a class="btn btn--primary" href="#demande" data-intent="' + (reserved ? "alerte" : "reservation") + '">' + icon("mail") + "Contacter</a></div>" +
 
     '<div class="lightbox" data-lightbox role="dialog" aria-modal="true" aria-label="Photos du véhicule" hidden>' +
       '<button class="lightbox__close" type="button" data-lb-close aria-label="Fermer">' + icon("x") + "</button>" +
@@ -268,21 +282,27 @@
   [apport, duree, taux].forEach(function (el) { el.addEventListener("input", simulate); });
   simulate();
 
-  /* ---------- Formulaire de demande (via messagerie) ---------- */
+  /* ---------- Formulaire de demande / offre (back-office, sinon messagerie) ---------- */
   var form = $("[data-request]");
-  var defaultMsg = function (objet) {
-    return "Bonjour,\n\nJe suis intéressé(e) par le véhicule " + name + " " + v.version + " (" + v.annee + ", " + fmt.km(v.km) + ") affiché à " + fmt.price(v.prix) + " — réf. " + v.ref + ".\n\nObjet : " + objet + ".\n\nMerci de me recontacter.";
+  var offerField = $("[data-offer-field]");
+  var defaultMsg = function (type) {
+    return "Bonjour,\n\nJe suis intéressé(e) par le véhicule " + name + " " + v.version + " (" + v.annee + ", " + fmt.km(v.km) + ") affiché à " + fmt.price(v.prix) + " — réf. " + v.ref + ".\n\nObjet : " + TYPES[type] + ".\n\nMerci de me recontacter.";
   };
   var msgTouched = false;
-  form.message.value = defaultMsg(form.objet.value);
+  function onTypeChange() {
+    offerField.hidden = form.objet.value !== "offre";
+    if (!msgTouched) form.message.value = defaultMsg(form.objet.value);
+  }
   form.message.addEventListener("input", function () { msgTouched = true; });
-  form.objet.addEventListener("change", function () { if (!msgTouched) form.message.value = defaultMsg(form.objet.value); });
+  form.objet.addEventListener("change", onTypeChange);
+  if (reserved) form.objet.value = "alerte";
+  onTypeChange();
 
   $$("[data-intent]").forEach(function (a) {
     a.addEventListener("click", function () {
       form.objet.value = a.getAttribute("data-intent");
-      if (!msgTouched) form.message.value = defaultMsg(form.objet.value);
-      setTimeout(function () { form.nom.focus({ preventScroll: true }); }, 500);
+      onTypeChange();
+      setTimeout(function () { (form.objet.value === "offre" ? form.montant : form.nom).focus({ preventScroll: true }); }, 500);
     });
   });
 
@@ -303,14 +323,46 @@
     var mailOk = !form.email.value || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.value);
     setError(form.email, mailOk ? "" : "Adresse e-mail invalide.");
     setError(form.rgpd, form.rgpd.checked ? "" : "Merci d'accepter pour que nous puissions vous recontacter.");
-    ok = form.nom.value.trim() && telOk && mailOk && form.rgpd.checked;
+    var isOffer = form.objet.value === "offre";
+    var montant = Number(form.montant.value);
+    var offerOk = !isOffer || montant >= 100;
+    setError(form.montant, offerOk ? "" : "Indiquez le montant de votre offre.");
+    ok = form.nom.value.trim() && telOk && mailOk && form.rgpd.checked && offerOk;
     if (!ok) { var first = form.querySelector(".has-error input, .has-error select"); if (first) first.focus(); return; }
 
-    var subject = form.objet.value + " – " + name + " (réf. " + v.ref + ")";
-    var body = form.message.value + "\n\n— \nNom : " + form.nom.value.trim() + "\nTéléphone : " + form.tel.value.trim() +
-      (form.email.value ? "\nE-mail : " + form.email.value.trim() : "") + "\nAnnonce : " + SITE + "vehicule.html?id=" + v.id;
-    window.location.href = "mailto:" + EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    $("[data-success]").hidden = false;
+    var errorBox = $("[data-form-error]"), success = $("[data-success]"), btn = $("[data-submit]");
+    errorBox.hidden = true;
+    btn.disabled = true;
+    var payload = {
+      vehiculeId: v.id, type: form.objet.value, nom: form.nom.value.trim(), tel: form.tel.value.trim(),
+      email: form.email.value.trim(), message: form.message.value.trim(), montant: isOffer ? montant : null, website: form.website.value,
+    };
+    var done = function (text) {
+      $("[data-success-text]").textContent = text;
+      success.hidden = false;
+      success.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+
+    LA.sendRequest(payload).then(function () {
+      done(isOffer
+        ? "Merci ! Votre offre de " + fmt.price(montant) + " a bien été transmise. Nous vous recontactons très vite."
+        : "Merci ! Votre demande a bien été envoyée. Nous vous recontactons très vite.");
+      form.reset();
+      msgTouched = false;
+      onTypeChange();
+    }).catch(function (err) {
+      if (err.status === 422 || err.status === 429) {
+        errorBox.textContent = err.message;
+        errorBox.hidden = false;
+        return;
+      }
+      // Back-office non configuré ou injoignable : on passe par la messagerie du visiteur
+      var subject = TYPES[payload.type] + (isOffer ? " (" + fmt.price(montant) + ")" : "") + " – " + name + " (réf. " + v.ref + ")";
+      var body = payload.message + (isOffer ? "\n\nMon offre : " + fmt.price(montant) : "") + "\n\n— \nNom : " + payload.nom + "\nTéléphone : " + payload.tel +
+        (payload.email ? "\nE-mail : " + payload.email : "") + "\nAnnonce : " + SITE + "vehicule.html?id=" + v.id;
+      window.location.href = "mailto:" + EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+      done("Votre messagerie va s'ouvrir avec la demande pré-remplie. Si rien ne se passe, écrivez-nous à " + EMAIL + " ou appelez le " + PHONE + ".");
+    }).then(function () { btn.disabled = false; });
   });
 
   /* ---------- Partage ---------- */
@@ -358,4 +410,4 @@
     },
   });
   document.head.appendChild(ld);
-})();
+});

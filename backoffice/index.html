@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Back-office – Livradois Automobiles</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="assets/admin.css">
+</head>
+
+<body>
+  <!-- Connexion -->
+  <main class="login" id="login" hidden>
+    <form class="login__card" id="login-form" novalidate>
+      <div class="login__brand"><img src="assets/logo-footer.webp" width="88" height="89" alt="">Livradois<br>Automobiles</div>
+      <div>
+        <h1>Espace de gestion</h1>
+        <p class="muted">Connectez-vous pour gérer vos annonces et vos demandes.</p>
+      </div>
+      <label class="field">E-mail<input class="input" type="email" name="email" autocomplete="username" required autofocus></label>
+      <label class="field">Mot de passe<input class="input" type="password" name="password" autocomplete="current-password" required></label>
+      <p class="alert" id="login-error" role="alert" hidden></p>
+      <button class="btn btn--primary btn--block" type="submit"><svg class="i"><use href="assets/icons.svg#lock"/></svg>Se connecter</button>
+      <p class="login__note"><svg class="i i--sm"><use href="assets/icons.svg#shield"/></svg>Connexion chiffrée · session fermée après 2 h d'inactivité</p>
+    </form>
+  </main>
+
+  <!-- Application -->
+  <div class="app" id="app" hidden>
+    <aside class="side" id="side">
+      <div class="side__brand"><img src="assets/logo-footer.webp" width="88" height="89" alt=""><div>Livradois Auto<small>Back-office</small></div></div>
+      <nav class="side__nav" aria-label="Menu du back-office">
+        <a href="#/" data-nav="dashboard"><svg class="i"><use href="assets/icons.svg#dashboard"/></svg>Tableau de bord</a>
+        <a href="#/annonces" data-nav="annonces"><svg class="i"><use href="assets/icons.svg#car"/></svg>Annonces<span class="count" data-count-annonces></span></a>
+        <a href="#/demandes" data-nav="demandes"><svg class="i"><use href="assets/icons.svg#inbox"/></svg>Demandes & offres<span class="count count--hot" data-count-demandes></span></a>
+        <a href="#/compte" data-nav="compte"><svg class="i"><use href="assets/icons.svg#user"/></svg>Mon compte</a>
+      </nav>
+      <div class="side__foot">
+        <a href="#" target="_blank" rel="noopener" data-site-link><svg class="i"><use href="assets/icons.svg#external"/></svg>Voir le site</a>
+        <button type="button" data-logout><svg class="i"><use href="assets/icons.svg#logout"/></svg>Déconnexion</button>
+        <p class="side__user" data-user></p>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" type="button" data-menu aria-label="Menu"><svg class="i"><use href="assets/icons.svg#menu"/></svg></button>
+        <h1 data-title>Tableau de bord</h1>
+        <div class="topbar__actions" data-actions></div>
+      </header>
+      <div class="view" id="view" tabindex="-1"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog class="confirm" id="confirm">
+    <form method="dialog">
+      <h2 data-confirm-title>Confirmer</h2>
+      <p data-confirm-text></p>
+      <div class="confirm__actions"><button class="btn btn--ghost" value="cancel">Annuler</button><button class="btn btn--danger" value="ok">Confirmer</button></div>
+    </form>
+  </dialog>
+
+  <script src="assets/admin.js"></script>
+</body>
+
+</html>

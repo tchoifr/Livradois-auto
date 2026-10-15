@@ -687,3 +687,5 @@ a.info-card:hover { border-color: var(--ink-900); }
   .partners__track { flex-wrap: wrap; justify-content: center; width: auto; }
   .partners__track [aria-hidden="true"] { display: none; }
 }
+/* Honeypot anti-robots (formulaire de demande) */
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
