@@ -1,7 +1,14 @@
 name: Déployer l'API du back-office (OVH)
 
-# Lancement manuel uniquement : Actions → « Déployer l'API du back-office » → Run workflow
+# Automatique à chaque modification de backoffice/ sur la branche du site, ou manuel :
+# Actions → « Déployer l'API du back-office » → Run workflow.
+# Inactif tant que la variable de dépôt OVH_DEPLOY_ENABLED ne vaut pas « true ».
 on:
+  push:
+    branches: [refonte-design, main]
+    paths:
+      - "backoffice/**"
+      - ".github/workflows/deploy-backoffice.yml"
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +20,7 @@ permissions:
 
 jobs:
   deploy:
+    if: vars.OVH_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
