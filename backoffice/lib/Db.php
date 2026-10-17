@@ -1,10 +1,11 @@
 <?php
 declare(strict_types=1);
 
-/** Accès base de données (MySQL sur OVH, SQLite possible pour les tests locaux). */
+/** Accès base de données (MySQL sur OVH, SQLite pour la démo et les tests). */
 final class Db
 {
     private static ?PDO $pdo = null;
+    private static int $depth = 0;
 
     public static function pdo(): PDO
     {
@@ -17,6 +18,9 @@ final class Db
             ]);
             if (self::driver() === 'sqlite') {
                 self::$pdo->exec('PRAGMA foreign_keys = ON');
+                self::$pdo->exec('PRAGMA busy_timeout = 5000');
+            } else {
+                self::$pdo->exec("SET time_zone = '" . date('P') . "'");
             }
         }
         return self::$pdo;
@@ -25,6 +29,11 @@ final class Db
     public static function driver(): string
     {
         return self::pdo()->getAttribute(PDO::ATTR_DRIVER_NAME);
+    }
+
+    public static function isMysql(): bool
+    {
+        return self::driver() === 'mysql';
     }
 
     public static function all(string $sql, array $params = []): array
@@ -67,13 +76,72 @@ final class Db
 
     public static function update(string $table, array $data, int $id): void
     {
+        if (!$data) {
+            return;
+        }
         $set = implode(', ', array_map(fn($c) => "$c = :$c", array_keys($data)));
         $data['id'] = $id;
         self::exec("UPDATE $table SET $set WHERE id = :id", $data);
     }
 
+    /**
+     * Exécute $fn dans une transaction. En SQLite, BEGIN IMMEDIATE prend tout de suite le verrou
+     * d'écriture (les créations simultanées sont donc sérialisées) ; en MySQL, on verrouille les
+     * lignes nécessaires avec lockRow().
+     */
+    public static function transaction(callable $fn)
+    {
+        if (self::$depth > 0) {
+            self::$depth++;
+            try {
+                return $fn();
+            } finally {
+                self::$depth--;
+            }
+        }
+        $pdo = self::pdo();
+        if (self::isMysql()) {
+            $pdo->beginTransaction();
+        } else {
+            $pdo->exec('BEGIN IMMEDIATE');
+        }
+        self::$depth = 1;
+        try {
+            $result = $fn();
+            if (self::isMysql()) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('COMMIT');
+            }
+            return $result;
+        } catch (Throwable $e) {
+            if (self::isMysql()) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            } else {
+                $pdo->exec('ROLLBACK');
+            }
+            throw $e;
+        } finally {
+            self::$depth = 0;
+        }
+    }
+
+    /** Verrouille une ligne jusqu'à la fin de la transaction en cours (MySQL : SELECT … FOR UPDATE). */
+    public static function lockRow(string $table, int $id): ?array
+    {
+        return self::one("SELECT * FROM $table WHERE id = ?" . (self::isMysql() ? ' FOR UPDATE' : ''), [$id]);
+    }
+
     public static function now(): string
     {
         return date('Y-m-d H:i:s');
+    }
+
+    /** Liste de paramètres « ?, ?, ? » pour une clause IN. */
+    public static function in(array $values): string
+    {
+        return implode(', ', array_fill(0, max(1, count($values)), '?'));
     }
 }

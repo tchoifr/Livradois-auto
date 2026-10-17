@@ -12,6 +12,9 @@ final class Uploads
 
     public static function photo(array $file): array
     {
+        if (BO_DEMO) {
+            Http::fail(403, 'L\'envoi de photos est désactivé dans la démonstration.');
+        }
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
             Http::fail(422, 'Envoi du fichier impossible (taille maximale : 15 Mo).');
         }

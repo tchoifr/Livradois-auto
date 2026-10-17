@@ -25,7 +25,7 @@ function importDemo(): int
         if (Vehicles::findBySlug($v['id'])) {
             continue;
         }
-        Db::insert('la_vehicules', [
+        $vid = Db::insert('la_vehicules', [
             'slug' => $v['id'], 'ref' => $v['ref'], 'statut' => $v['statut'],
             'marque' => $v['marque'], 'modele' => $v['modele'], 'version' => $v['version'],
             'annee' => $v['annee'], 'mise_en_circulation' => $v['miseEnCirculation'] ?? '', 'km' => $v['km'],
@@ -40,7 +40,11 @@ function importDemo(): int
             'photos' => json_encode($v['photos'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'publie_le' => $v['ajoutLe'] ?? date('Y-m-d'),
             'created_at' => Db::now(), 'updated_at' => Db::now(),
+            'parc_id' => (int) Db::value('SELECT MIN(id) FROM la_parcs WHERE actif = 1') ?: null,
+            'numero_stock' => Db::value('SELECT COUNT(*) FROM la_vehicules WHERE numero_stock = ?', [$v['ref']]) ? null : $v['ref'],
+            'demo' => 1,
         ]);
+        Checklist::ensure($vid);
         $n++;
     }
     return $n;
@@ -65,8 +69,14 @@ if (PHP_SAPI === 'cli') {
         return $value;
     };
 
-    Schema::migrate();
-    echo "Tables à jour.\n";
+    if (BO_DEMO) {
+        // php setup.php --demo-db : (re)construit la base de démonstration séparée
+        Demo::ensure(true);
+        echo "Base de démonstration reconstruite : " . private_dir('demo') . "/demo.sqlite\n";
+        exit;
+    }
+    $applied = Schema::migrate();
+    echo 'Tables à jour' . ($applied ? ' (migrations appliquées : ' . implode(', ', $applied) . ')' : '') . ".\n";
     $args = array_values(array_filter(array_slice($argv, 1), fn($a) => !str_starts_with($a, '--')));
     if (isset($args[0])) {
         $email = mb_strtolower(trim($args[0]));

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="assets/admin.css?v=mv9jqqkt">
+  <link rel="stylesheet" href="assets/admin.css?v=3">
 </head>
 
 <body>
@@ -22,16 +22,34 @@
       <div class="login__brand"><img src="assets/logo-footer.webp" width="88" height="89" alt="">Livradois<br>Automobiles</div>
       <div>
         <h1>Espace de gestion</h1>
-        <p class="muted">Connectez-vous pour gérer vos annonces et vos demandes.</p>
+        <p class="muted">Véhicules, planning, préparation, clients et ventes.</p>
       </div>
       <label class="field">E-mail<input class="input" type="email" name="email" autocomplete="username" required autofocus></label>
       <label class="field">Mot de passe<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="alert" id="login-error" role="alert" hidden></p>
       <button class="btn btn--primary btn--block" type="submit"><svg class="i"><use href="assets/icons.svg#lock"/></svg>Se connecter</button>
       <p class="login__note"><svg class="i i--sm"><use href="assets/icons.svg#shield"/></svg>Connexion chiffrée · session fermée après 2 h d'inactivité</p>
-      <p class="alert" id="login-config" hidden>Le dashboard n'est pas encore relié à son serveur (API OVH en cours d'installation).</p>
-      <a class="btn btn--ghost btn--block" href="?demo=1"><svg class="i"><use href="assets/icons.svg#eye"/></svg>Voir la démo (voitures de test)</a>
+      <p class="alert" id="login-config" hidden>Le dashboard n'est pas encore relié à son serveur.</p>
+      <a class="btn btn--ghost btn--block" href="?demo=1"><svg class="i"><use href="assets/icons.svg#eye"/></svg>Voir la démo (données fictives)</a>
     </form>
+  </main>
+
+  <!-- Choix du profil de démonstration -->
+  <main class="login" id="demo-pick" hidden>
+    <div class="login__card">
+      <div class="login__brand"><img src="assets/logo-footer.webp" width="88" height="89" alt="">Livradois<br>Automobiles</div>
+      <div>
+        <h1>Démonstration</h1>
+        <p class="muted">Base de démonstration séparée, données fictives remises à zéro chaque jour. Choisissez un profil pour découvrir les droits de chacun.</p>
+      </div>
+      <div class="demo-roles">
+        <button class="demo-role" type="button" data-role="admin"><svg class="i"><use href="assets/icons.svg#key"/></svg><span><strong>Propriétaire</strong><small>Tous les parcs, ventes, finances, paramètres</small></span></button>
+        <button class="demo-role" type="button" data-role="secretaire"><svg class="i"><use href="assets/icons.svg#user"/></svg><span><strong>Secrétaire (parc d'Arlanc)</strong><small>Planning, clients, préparation des véhicules</small></span></button>
+        <button class="demo-role" type="button" data-role="referent"><svg class="i"><use href="assets/icons.svg#users"/></svg><span><strong>Secrétaire référente (parc d'Ambert)</strong><small>+ gestion des annonces de son parc</small></span></button>
+      </div>
+      <p class="alert" id="demo-error" hidden></p>
+      <a class="btn btn--ghost btn--block" href="./"><svg class="i"><use href="assets/icons.svg#arrow-left"/></svg>Retour à la connexion</a>
+    </div>
   </main>
 
   <!-- Application -->
@@ -40,21 +58,37 @@
       <div class="side__brand"><img src="assets/logo-footer.webp" width="88" height="89" alt=""><div>Livradois Auto<small>Back-office</small></div></div>
       <nav class="side__nav" aria-label="Menu du back-office">
         <a href="#/" data-nav="dashboard"><svg class="i"><use href="assets/icons.svg#dashboard"/></svg>Tableau de bord</a>
-        <a href="#/annonces" data-nav="annonces"><svg class="i"><use href="assets/icons.svg#car"/></svg>Annonces<span class="count" data-count-annonces></span></a>
-        <a href="#/demandes" data-nav="demandes"><svg class="i"><use href="assets/icons.svg#inbox"/></svg>Demandes & offres<span class="count count--hot" data-count-demandes></span></a>
-        <a href="#/compte" data-nav="compte"><svg class="i"><use href="assets/icons.svg#user"/></svg>Mon compte</a>
+        <a href="#/planning" data-nav="planning" data-perm="rdv.gerer"><svg class="i"><use href="assets/icons.svg#calendar"/></svg>Planning<span class="count" data-count="rdvAujourdhui"></span></a>
+        <a href="#/vehicules" data-nav="vehicules" data-perm="vehicules.voir"><svg class="i"><use href="assets/icons.svg#car"/></svg>Véhicules</a>
+        <a href="#/preparation" data-nav="preparation" data-perm="vehicules.preparer"><svg class="i"><use href="assets/icons.svg#clipboard"/></svg>Préparation</a>
+        <a href="#/clients" data-nav="clients" data-perm="clients.gerer"><svg class="i"><use href="assets/icons.svg#users"/></svg>Clients</a>
+        <a href="#/demandes" data-nav="demandes" data-perm="demandes.gerer"><svg class="i"><use href="assets/icons.svg#inbox"/></svg>Demandes & offres<span class="count count--hot" data-count="demandesNouvelles"></span></a>
+        <a href="#/ventes" data-nav="ventes" data-perm="ventes.gerer"><svg class="i"><use href="assets/icons.svg#euro"/></svg>Ventes & finances</a>
+        <a href="#/messages" data-nav="messages" data-perm="messages.envoyer"><svg class="i"><use href="assets/icons.svg#mail"/></svg>Messages<span class="count count--hot" data-count="messagesEchec"></span></a>
+        <p class="side__sep" data-perm="parcs.gerer">Administration</p>
+        <a href="#/parcs" data-nav="parcs" data-perm="parcs.gerer"><svg class="i"><use href="assets/icons.svg#map-pin"/></svg>Parcs</a>
+        <a href="#/equipe" data-nav="equipe" data-perm="users.gerer"><svg class="i"><use href="assets/icons.svg#key"/></svg>Équipe & accès</a>
+        <a href="#/parametres" data-nav="parametres" data-perm="parametres.gerer"><svg class="i"><use href="assets/icons.svg#sliders"/></svg>Paramètres</a>
+        <a href="#/journal" data-nav="journal" data-perm="audit.voir"><svg class="i"><use href="assets/icons.svg#file-text"/></svg>Journal d'audit</a>
       </nav>
       <div class="side__foot">
-        <a href="#" target="_blank" rel="noopener" data-site-link><svg class="i"><use href="assets/icons.svg#external"/></svg>Voir le site</a>
+        <a href="#/compte" data-nav="compte"><svg class="i"><use href="assets/icons.svg#user"/></svg>Mon compte</a>
+        <a href="../" target="_blank" rel="noopener"><svg class="i"><use href="assets/icons.svg#external"/></svg>Voir le site</a>
         <button type="button" data-logout><svg class="i"><use href="assets/icons.svg#logout"/></svg>Déconnexion</button>
         <p class="side__user" data-user></p>
       </div>
     </aside>
     <div class="main">
-      <p class="demo-banner" data-demo-banner hidden>Mode démonstration : données fictives, rien n'est enregistré. <a href="./">Quitter la démo</a></p>
+      <p class="demo-banner" data-demo-banner hidden>Démonstration : base séparée et données fictives (remises à zéro chaque jour). <a href="?demo=1">Changer de profil</a> · <a href="./">Quitter la démo</a></p>
       <header class="topbar">
         <button class="icon-btn menu-btn" type="button" data-menu aria-label="Menu"><svg class="i"><use href="assets/icons.svg#menu"/></svg></button>
         <h1 data-title>Tableau de bord</h1>
+        <div class="search-global">
+          <svg class="i"><use href="assets/icons.svg#search"/></svg>
+          <input class="input" type="search" data-search placeholder="Immatriculation, n° de stock, client…" aria-label="Recherche globale" autocomplete="off">
+          <div class="search-results" data-search-results hidden></div>
+        </div>
+        <select class="select parc-filter" data-parc-filter aria-label="Filtrer par parc"></select>
         <div class="topbar__actions" data-actions></div>
       </header>
       <div class="view" id="view" tabindex="-1"></div>
@@ -62,18 +96,19 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <dialog class="confirm" id="confirm">
-    <form method="dialog">
-      <h2 data-confirm-title>Confirmer</h2>
-      <p data-confirm-text></p>
-      <div class="confirm__actions"><button class="btn btn--ghost" value="cancel">Annuler</button><button class="btn btn--danger" value="ok">Confirmer</button></div>
-    </form>
-  </dialog>
 
-  <script src="../js/config.js?v=mv9jqqkt"></script>
-  <script src="../js/vehicules-data.js?v=mv9jqqkt"></script>
-  <script src="assets/demo.js?v=mv9jqqkt"></script>
-  <script src="assets/admin.js?v=mv9jqqkt"></script>
+  <script src="../js/config.js?v=3"></script>
+  <script src="assets/core.js?v=3"></script>
+  <script src="assets/views/dashboard.js?v=3"></script>
+  <script src="assets/views/planning.js?v=3"></script>
+  <script src="assets/views/vehicules.js?v=3"></script>
+  <script src="assets/views/preparation.js?v=3"></script>
+  <script src="assets/views/clients.js?v=3"></script>
+  <script src="assets/views/demandes.js?v=3"></script>
+  <script src="assets/views/ventes.js?v=3"></script>
+  <script src="assets/views/messages.js?v=3"></script>
+  <script src="assets/views/gestion.js?v=3"></script>
+  <script src="assets/app.js?v=3"></script>
 </body>
 
 </html>

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Demandes clients et offres envoyées depuis le site. */
+/** Demandes clients et offres envoyées depuis le site, rattachées aux fiches clients avec validation humaine. */
 final class Requests
 {
     public const TYPES = [
@@ -52,6 +52,8 @@ final class Requests
         }
         $titre = $vehicule ? trim("{$vehicule['marque']} {$vehicule['modele']} {$vehicule['version']}") . " (réf. {$vehicule['ref']})" : '';
 
+        // Client existant probable (même téléphone ou e-mail) : proposé, jamais associé automatiquement
+        $dups = Clients::duplicates($tel, $email);
         $id = Db::insert('la_demandes', [
             'vehicule_id' => $vehicule ? (int) $vehicule['id'] : null,
             'vehicule_titre' => mb_substr($titre, 0, 200),
@@ -63,47 +65,26 @@ final class Requests
             'montant' => $montant,
             'statut' => 'nouvelle',
             'ip' => Http::ip(),
+            'client_suggere_id' => count($dups) === 1 ? $dups[0]['id'] : null,
             'created_at' => Db::now(),
             'updated_at' => Db::now(),
         ]);
         Http::record('demande', (string) $id);
-        self::notify($type, $nom, $tel, $email, $message, $montant, $titre);
+        Notifications::demandeSite($id);
         return ['ok' => true, 'id' => $id];
     }
 
-    /** Prévient le garage par e-mail (fonction mail() de l'hébergement OVH). */
-    private static function notify(string $type, string $nom, string $tel, string $email, string $message, ?int $montant, string $titre): void
+    public static function list(array $user, array $q): array
     {
-        $to = cfg('notify_email');
-        if (!$to || !function_exists('mail')) {
-            return;
-        }
-        $clean = fn($s) => str_replace(["\r", "\n"], ' ', $s);
-        $subject = '=?UTF-8?B?' . base64_encode('Nouvelle demande : ' . self::TYPES[$type] . ($titre ? ' – ' . $titre : '')) . '?=';
-        $body = "Nouvelle demande reçue sur le site Livradois Automobiles\n\n"
-            . 'Type : ' . self::TYPES[$type] . "\n"
-            . ($titre ? "Véhicule : $titre\n" : '')
-            . ($montant ? 'Offre : ' . number_format($montant, 0, ',', ' ') . " €\n" : '')
-            . "Nom : $nom\nTéléphone : $tel\n" . ($email ? "E-mail : $email\n" : '')
-            . "\nMessage :\n$message\n\n— Gérer les demandes : " . cfg('site_url', '') . "admin/#/demandes\n";
-        $headers = "Content-Type: text/plain; charset=UTF-8\r\n";
-        $from = cfg('mail_from');
-        if ($from) {
-            $headers .= 'From: ' . $clean($from) . "\r\n";
-        }
-        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $headers .= 'Reply-To: ' . $clean($email) . "\r\n";
-        }
-        @mail($to, $subject, $body, $headers);
-    }
-
-    public static function list(array $q): array
-    {
-        $where = [];
-        $params = [];
+        [$scope, $params] = Access::scope($user, 'v.parc_id', true);
+        $where = ['1 = 1' . $scope];
         if (!empty($q['vehicule'])) {
             $where[] = 'd.vehicule_id = ?';
             $params[] = (int) $q['vehicule'];
+        }
+        if (!empty($q['client'])) {
+            $where[] = 'd.client_id = ?';
+            $params[] = (int) $q['client'];
         }
         if (!empty($q['type']) && array_key_exists($q['type'], self::TYPES)) {
             $where[] = 'd.type = ?';
@@ -113,10 +94,11 @@ final class Requests
             $where[] = 'd.statut = ?';
             $params[] = $q['statut'];
         }
-        $sql = 'SELECT d.*, v.slug, v.marque, v.modele, v.prix, v.photos, v.statut AS vehicule_statut
-            FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id'
-            . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-            . ' ORDER BY d.created_at DESC, d.id DESC LIMIT 500';
+        $sql = 'SELECT d.*, v.slug, v.marque, v.modele, v.prix, v.photos, v.statut AS vehicule_statut, v.numero_stock,
+                c.nom AS client_nom, c.prenom AS client_prenom, s.nom AS sugg_nom, s.prenom AS sugg_prenom, s.telephone AS sugg_tel
+            FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id
+            LEFT JOIN la_clients c ON c.id = d.client_id LEFT JOIN la_clients s ON s.id = d.client_suggere_id
+            WHERE ' . implode(' AND ', $where) . ' ORDER BY d.created_at DESC, d.id DESC LIMIT 500';
         return array_map(function ($r) {
             $photos = json_decode($r['photos'] ?: '[]', true) ?: [];
             return [
@@ -133,44 +115,92 @@ final class Requests
                     'dbId' => (int) $r['vehicule_id'],
                     'slug' => $r['slug'],
                     'titre' => $r['marque'] ? "{$r['marque']} {$r['modele']}" : $r['vehicule_titre'],
+                    'numeroStock' => $r['numero_stock'],
                     'prix' => $r['prix'] !== null ? (int) $r['prix'] : null,
                     'photo' => $photos[0] ?? null,
                     'statut' => $r['vehicule_statut'],
                     'supprime' => $r['marque'] === null,
                 ] : null,
                 'vehiculeTitre' => $r['vehicule_titre'],
+                'client' => $r['client_id'] ? ['id' => (int) $r['client_id'], 'nom' => trim(($r['client_prenom'] ?? '') . ' ' . $r['client_nom'])] : null,
+                'clientSuggere' => !$r['client_id'] && $r['client_suggere_id'] ? ['id' => (int) $r['client_suggere_id'], 'nom' => trim(($r['sugg_prenom'] ?? '') . ' ' . $r['sugg_nom']), 'telephone' => $r['sugg_tel']] : null,
             ];
         }, Db::all($sql, $params));
     }
 
-    public static function setStatut(int $id, string $statut): void
+    private static function load(array $user, int $id): array
     {
+        $d = Db::one('SELECT d.*, v.parc_id FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id WHERE d.id = ?', [$id]);
+        if (!$d) {
+            Http::fail(404, 'Demande introuvable.');
+        }
+        if ($d['vehicule_id'] !== null) {
+            Access::requireParc($user, $d['parc_id'] !== null ? (int) $d['parc_id'] : null);
+        }
+        return $d;
+    }
+
+    /** Rattache la demande à un client existant (validation humaine) ou crée la fiche à partir de la demande. */
+    public static function associer(array $user, array $in): array
+    {
+        Access::require($user, 'clients.gerer');
+        $d = self::load($user, (int) ($in['id'] ?? 0));
+        if (!empty($in['clientId'])) {
+            $cid = (int) $in['clientId'];
+            if (!Db::value('SELECT COUNT(*) FROM la_clients WHERE id = ? AND actif = 1', [$cid])) {
+                Http::fail(422, 'Client introuvable.');
+            }
+        } else {
+            $parts = preg_split('/\s+/', trim($d['nom']), 2);
+            $cid = Clients::save($user, [
+                'nom' => count($parts) === 2 ? $parts[1] : $parts[0], 'prenom' => count($parts) === 2 ? $parts[0] : '',
+                'telephone' => $d['tel'], 'email' => $d['email'], 'preference' => $d['email'] !== '' ? 'email' : 'telephone',
+                'serviceEmail' => $d['email'] !== '', 'confirmerDoublon' => !empty($in['confirmerDoublon']),
+            ])['id'];
+        }
+        Db::exec('UPDATE la_demandes SET client_id = ?, client_suggere_id = NULL, updated_at = ? WHERE id = ?', [$cid, Db::now(), (int) $d['id']]);
+        Clients::history($user, $cid, 'demande_site', (self::TYPES[$d['type']] ?? $d['type']) . ($d['vehicule_titre'] ? ' — ' . $d['vehicule_titre'] : '')
+            . ($d['montant'] ? ' — offre ' . number_format((int) $d['montant'], 0, ',', ' ') . ' €' : '') . ($d['message'] ? ' : ' . mb_substr((string) $d['message'], 0, 200) : ''),
+            ['vehicule_id' => $d['vehicule_id'] !== null ? (int) $d['vehicule_id'] : null, 'demande_id' => (int) $d['id']], $d['created_at']);
+        Audit::log($user, 'demande.associer', 'demande', (int) $d['id'], null, ['client_id' => $cid]);
+        return ['ok' => true, 'clientId' => $cid];
+    }
+
+    public static function setStatut(array $user, int $id, string $statut): void
+    {
+        Access::require($user, 'demandes.gerer');
         if (!in_array($statut, self::STATUTS, true)) {
             Http::fail(422, 'Statut invalide.');
         }
-        if (!Db::exec('UPDATE la_demandes SET statut = ?, updated_at = ? WHERE id = ?', [$statut, Db::now(), $id])) {
-            Http::fail(404, 'Demande introuvable.');
-        }
+        $d = self::load($user, $id);
+        Db::exec('UPDATE la_demandes SET statut = ?, updated_at = ? WHERE id = ?', [$statut, Db::now(), $id]);
+        Audit::log($user, 'demande.statut', 'demande', $id, ['statut' => $d['statut']], ['statut' => $statut]);
     }
 
-    public static function delete(int $id): void
+    public static function delete(array $user, int $id): void
     {
+        Access::require($user, 'demandes.supprimer');
+        self::load($user, $id);
         Db::exec('DELETE FROM la_demandes WHERE id = ?', [$id]);
+        Audit::log($user, 'demande.supprimer', 'demande', $id);
     }
 
-    public static function stats(): array
+    /** Compteurs courts (menu et notifications du dashboard). */
+    public static function stats(array $user): array
     {
-        $count = fn($sql, $p = []) => (int) Db::value($sql, $p);
+        [$scope, $p] = Access::scope($user, 'v.parc_id', true);
+        [$vs, $vp] = Access::scope($user, 'parc_id');
+        $count = fn($sql, $params = []) => (int) Db::value($sql, $params);
         return [
-            'enLigne' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'disponible'"),
-            'reserves' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'reserve'"),
-            'brouillons' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'brouillon'"),
-            'vendus' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'vendu'"),
-            'valeurStock' => $count("SELECT COALESCE(SUM(prix), 0) FROM la_vehicules WHERE statut IN ('disponible', 'reserve')"),
-            'demandesNouvelles' => $count("SELECT COUNT(*) FROM la_demandes WHERE statut = 'nouvelle'"),
-            'offresOuvertes' => $count("SELECT COUNT(*) FROM la_demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours')"),
-            'annoncesAvecOffres' => $count("SELECT COUNT(DISTINCT vehicule_id) FROM la_demandes WHERE type = 'offre' AND statut IN ('nouvelle', 'en_cours') AND vehicule_id IS NOT NULL"),
-            'demandes30j' => $count('SELECT COUNT(*) FROM la_demandes WHERE created_at >= ?', [date('Y-m-d H:i:s', time() - 86400 * 30)]),
+            'enLigne' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'disponible'$vs", $vp),
+            'reserves' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'reserve'$vs", $vp),
+            'brouillons' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut = 'brouillon'$vs", $vp),
+            'vendus' => $count("SELECT COUNT(*) FROM la_vehicules WHERE statut IN ('vendu', 'livre')$vs", $vp),
+            'demandesNouvelles' => $count("SELECT COUNT(*) FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id WHERE d.statut = 'nouvelle'$scope", $p),
+            'offresOuvertes' => $count("SELECT COUNT(*) FROM la_demandes d LEFT JOIN la_vehicules v ON v.id = d.vehicule_id WHERE d.type = 'offre' AND d.statut IN ('nouvelle', 'en_cours')$scope", $p),
+            'rdvAujourdhui' => $count("SELECT COUNT(*) FROM la_rendez_vous r WHERE r.statut IN ('en_attente', 'confirme') AND r.start_at >= ? AND r.start_at < ?" . Access::scope($user, 'r.parc_id')[0],
+                array_merge([date('Y-m-d 00:00:00'), date('Y-m-d 00:00:00', strtotime('+1 day'))], Access::scope($user, 'r.parc_id')[1])),
+            'messagesEchec' => Notifications::stats($user)['echecs'],
         ];
     }
 }

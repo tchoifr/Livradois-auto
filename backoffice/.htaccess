@@ -12,7 +12,7 @@ DirectoryIndex index.php
 </IfModule>
 
 # Fichiers privés : configuration, documentation, données, sauvegardes
-<FilesMatch "^(config\.local\.php|config\.example\.php|README\.md|REVISION|.*\.json|.*\.sqlite|.*\.log|.*\.bak)$">
+<FilesMatch "^(config\.local\.php|config\.example\.php|settings(\.local)?\.php|README\.md|REVISION|.*\.json|.*\.sqlite|.*\.log|.*\.bak|.*\.gz)$">
   Require all denied
 </FilesMatch>
 

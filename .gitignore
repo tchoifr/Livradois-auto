@@ -4,6 +4,7 @@ bdd.txt
 .env*
 config.local.php
 **/config.local.php
+**/settings.local.php
 *.pem
 *.ppk
 id_rsa*

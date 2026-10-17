@@ -1,13 +1,16 @@
 name: Déployer l'API du back-office (OVH)
 
-# Automatique à chaque modification de backoffice/ sur la branche du site, ou manuel :
-# Actions → « Déployer l'API du back-office » → Run workflow.
+# 1. Tests de bout en bout sur MySQL 8.4 / PHP 8.2 (mêmes versions qu'OVH) — bloquants.
+# 2. Déploiement : envoi dans un dossier de préparation, sauvegarde de la base, migrations,
+#    puis mise en ligne seulement si tout a réussi (le site en ligne n'est jamais à moitié migré).
+# Automatique à chaque modification de backoffice/ ou tests/, ou manuel (Run workflow).
 # Inactif tant que la variable de dépôt OVH_DEPLOY_ENABLED ne vaut pas « true ».
 on:
   push:
     branches: [refonte-design, main]
     paths:
       - "backoffice/**"
+      - "tests/**"
       - ".github/workflows/deploy-backoffice.yml"
   workflow_dispatch:
 
@@ -19,20 +22,92 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: livradois_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: pdo_mysql, pdo_sqlite, gd, mbstring, intl, fileinfo
+          # Les e-mails sont capturés dans un fichier (aucun envoi réel pendant les tests)
+          ini-values: sendmail_path="cat >> /tmp/mails.log"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Syntaxe PHP
+        run: find backoffice tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Configuration de test
+        run: |
+          cat > backoffice/config.local.php <<'PHP'
+          <?php
+          return [
+              'db' => ['dsn' => 'mysql:host=127.0.0.1;port=3306;dbname=livradois_test;charset=utf8mb4', 'user' => 'root', 'pass' => 'root'],
+              'backoffice_url' => 'http://127.0.0.1:8766',
+              'site_url' => 'http://127.0.0.1/',
+              'allowed_origins' => [],
+              'notify_email' => 'garage@test.local',
+              'mail_redirect' => 'redirect@test.local',
+              'setup_key' => 'cle-installation-ci-0123456789',
+              'private_dir' => '/tmp/livradois-prive',
+              'cron_key' => 'cle-cron-ci-0123456789abcdefghij',
+          ];
+          PHP
+
+      - name: Base « production actuelle » puis migrations
+        run: |
+          php backoffice/setup.php admin@test.local 'AdminTest-2026!!' --demo
+          php backoffice/bin/backup.php
+          php backoffice/setup.php
+          php backoffice/setup.php --demo-db
+
+      - name: Serveur API (4 processus, pour tester les accès simultanés)
+        run: |
+          PHP_CLI_SERVER_WORKERS=4 php -d sendmail_path="cat >> /tmp/mails.log" -S 127.0.0.1:8766 -t backoffice > /tmp/php-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf "http://127.0.0.1:8766/api.php?r=vehicules" > /dev/null && break; sleep 1; done
+
+      - name: Tests de bout en bout (critères d'acceptation)
+        env:
+          API: http://127.0.0.1:8766/api.php
+          ADMIN_EMAIL: admin@test.local
+          ADMIN_PASSWORD: AdminTest-2026!!
+          BO_DIR: backoffice
+          PHP_BIN: php
+          MAIL_LOG: /tmp/mails.log
+          CRON_KEY: cle-cron-ci-0123456789abcdefghij
+        run: node tests/api.test.mjs
+
+      - name: Journal du serveur en cas d'échec
+        if: failure()
+        run: tail -n 80 /tmp/php-server.log || true
+
   deploy:
+    needs: tests
     if: vars.OVH_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
       SSH_TARGET: ${{ secrets.OVH_SSH_USER }}@${{ secrets.OVH_SSH_HOST }}
       API_DIR: ${{ vars.OVH_API_DIR }}
+      STAGING: livradois-deploiement
       PHP_BIN: ${{ vars.OVH_PHP_BIN || 'php' }}
       API_URL: ${{ vars.API_URL }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Vérification de la syntaxe PHP
-        run: find backoffice -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: Clé SSH (empreinte du serveur épinglée)
         env:
@@ -52,32 +127,45 @@ jobs:
             || { echo "::error::Dossier '$API_DIR' ou '$API_DIR/config.local.php' absent sur le serveur, ou PHP < 8.1"; exit 1; }
           ssh "$SSH_TARGET" "$PHP_BIN -r 'echo \"PHP \", PHP_VERSION, \" — modules : \", implode(\" \", array_values(array_intersect([\"pdo_mysql\",\"pdo_sqlite\",\"gd\",\"fileinfo\",\"mbstring\",\"intl\",\"zlib\",\"openssl\"], get_loaded_extensions()))), PHP_EOL;'"
 
-      - name: Envoi de l'API
-        # config.local.php (mots de passe) et les photos envoyées ne sont jamais écrasés ni supprimés
+      - name: Réglages propres au serveur (mode test des e-mails)
+        env:
+          MAIL_REDIRECT: ${{ secrets.MAIL_REDIRECT }}
+        # MAIL_REDIRECT = adresse qui reçoit TOUS les e-mails (mode test), ou « aucune » pour envoyer aux vrais destinataires.
+        # Secret absent : déploiement bloqué (jamais d'envoi réel par oubli).
+        run: |
+          test -n "$MAIL_REDIRECT" || { echo "::error::Secret MAIL_REDIRECT manquant : adresse du mode test, ou « aucune » pour des envois réels."; exit 1; }
+          php -r '$v = trim((string) getenv("MAIL_REDIRECT")); $v = strtolower($v) === "aucune" ? "" : $v;
+            if ($v !== "" && !filter_var($v, FILTER_VALIDATE_EMAIL)) { fwrite(STDERR, "MAIL_REDIRECT invalide\n"); exit(1); }
+            echo "<?php\n// Écrit par le déploiement (secret GitHub MAIL_REDIRECT). Ne pas modifier à la main.\nreturn ", var_export(["mail_redirect" => $v], true), ";\n";' > backoffice/settings.local.php
+          php -l backoffice/settings.local.php
+          echo "Mode test des e-mails : $(grep -q "''" backoffice/settings.local.php && echo 'désactivé (envois réels)' || echo 'actif (redirection)')"
+
+      - name: Envoi dans le dossier de préparation
+        run: |
+          rsync -rlz --delete --chmod=D755,F644 \
+            --exclude 'config.local.php' --exclude 'uploads/vehicules/*' --exclude 'README.md' --exclude '*.sqlite' \
+            backoffice/ "$SSH_TARGET:$STAGING/"
+
+      - name: Sauvegarde de la base puis migrations
+        run: |
+          ssh "$SSH_TARGET" "cp '$API_DIR/config.local.php' '$STAGING/config.local.php' && cd '$STAGING' \
+            && $PHP_BIN bin/backup.php && $PHP_BIN setup.php && $PHP_BIN setup.php --demo-db; s=\$?; rm -f '$STAGING/config.local.php'; exit \$s"
+
+      - name: Mise en ligne
         run: |
           rsync -rlz --delete --chmod=D755,F644 \
             --exclude 'config.local.php' --exclude 'uploads/vehicules/*' --exclude 'README.md' --exclude '*.sqlite' \
             backoffice/ "$SSH_TARGET:$API_DIR/"
           printf '%s\n' "$GITHUB_SHA" | ssh "$SSH_TARGET" "cat > '$API_DIR/REVISION'"
 
-      - name: Mise à jour des tables
-        run: ssh "$SSH_TARGET" "cd '$API_DIR' && $PHP_BIN setup.php"
-
       - name: Contrôle de l'API
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$API_URL/api.php?r=vehicules" || true)
           echo "GET $API_URL/api.php?r=vehicules → HTTP $code"
-          if [ "$code" = "200" ]; then exit 0; fi
-          if [ "$code" = "000" ]; then
-            # Certificat SSL pas encore émis : on vérifie que le serveur répond en HTTP (redirection vers HTTPS)
-            http=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "${API_URL/https:/http:}/api.php?r=vehicules" || true)
-            echo "HTTP (sans SSL) → $http"
-            if [ "$http" = "301" ] || [ "$http" = "302" ]; then
-              echo "::warning::API déployée, mais le certificat SSL n'est pas encore actif sur ${API_URL}."
-              exit 0
-            fi
-          fi
-          exit 1
+          test "$code" = "200"
+          demo=$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H 'Content-Type: application/json' -d '{"role":"admin"}' "$API_URL/api.php?demo=1&r=auth/demo" || true)
+          echo "Démonstration → HTTP $demo"
+          test "$demo" = "200"
 
       - name: Suppression de la clé SSH
         if: always()
