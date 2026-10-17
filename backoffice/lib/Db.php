@@ -21,6 +21,10 @@ final class Db
                 self::$pdo->exec('PRAGMA busy_timeout = 5000');
             } else {
                 self::$pdo->exec("SET time_zone = '" . date('P') . "'");
+                // Une requête qui attend un verrou (SELECT … FOR UPDATE) doit ensuite voir ce que la précédente
+                // a validé : en REPEATABLE READ (défaut MySQL), elle relirait une photo antérieure de la base
+                // et deux réservations simultanées du même créneau pourraient passer.
+                self::$pdo->exec('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
             }
         }
         return self::$pdo;

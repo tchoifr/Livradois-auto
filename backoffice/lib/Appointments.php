@@ -120,7 +120,9 @@ final class Appointments
     private static function assertFree(int $vehiculeId, string $start, string $end, int $exceptId = 0): void
     {
         $conflicts = Db::all('SELECT r.id, r.start_at, r.end_at, r.motif, r.statut, c.nom AS client FROM la_rendez_vous r LEFT JOIN la_clients c ON c.id = r.client_id
-            WHERE r.vehicule_id = ? AND r.statut IN ' . self::ACTIFS . ' AND r.start_at < ? AND r.end_at > ? AND r.id <> ?', [$vehiculeId, $end, $start, $exceptId]);
+            WHERE r.vehicule_id = ? AND r.statut IN ' . self::ACTIFS . ' AND r.start_at < ? AND r.end_at > ? AND r.id <> ?'
+            // Lecture verrouillante sous MySQL : toujours la dernière version validée
+            . (Db::isMysql() ? ' FOR UPDATE' : ''), [$vehiculeId, $end, $start, $exceptId]);
         if ($conflicts) {
             $c = $conflicts[0];
             Http::fail(409, 'Ce véhicule est déjà réservé de ' . date('H:i', strtotime($c['start_at'])) . ' à ' . date('H:i', strtotime($c['end_at']))
