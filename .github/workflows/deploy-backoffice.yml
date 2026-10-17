@@ -50,6 +50,7 @@ jobs:
         run: |
           ssh "$SSH_TARGET" "test -d '$API_DIR' && test -f '$API_DIR/config.local.php' && $PHP_BIN -r 'exit(PHP_VERSION_ID >= 80100 ? 0 : 1);'" \
             || { echo "::error::Dossier '$API_DIR' ou '$API_DIR/config.local.php' absent sur le serveur, ou PHP < 8.1"; exit 1; }
+          ssh "$SSH_TARGET" "$PHP_BIN -r 'echo \"PHP \", PHP_VERSION, \" — modules : \", implode(\" \", array_values(array_intersect([\"pdo_mysql\",\"pdo_sqlite\",\"gd\",\"fileinfo\",\"mbstring\",\"intl\",\"zlib\",\"openssl\"], get_loaded_extensions()))), PHP_EOL;'"
 
       - name: Envoi de l'API
         # config.local.php (mots de passe) et les photos envoyées ne sont jamais écrasés ni supprimés

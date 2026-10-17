@@ -13,3 +13,7 @@ id_rsa*
 backoffice/uploads/vehicules/*
 !backoffice/uploads/vehicules/.gitkeep
 *.sqlite
+
+# Documents de travail (ne pas publier : dépôt public)
+*.docx
+*.pdf
