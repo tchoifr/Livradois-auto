@@ -770,94 +770,55 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
 }
 .slot.is-selected, .slot.is-selected:hover:not(:disabled) { background: var(--brand-btn); border-color: var(--brand-btn); color: #fff; }
 
-/* ---------------------------------------------------------------- Aujourd'hui (programme de la journée) */
-.jr-bar { align-items: flex-start; }
-.jr-title { font-size: 19px; font-weight: 800; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.jr-pour { justify-content: flex-end; }
-.jr-pour .chip { padding: 6px 12px; font-size: 13px; }
-[data-jour] { transition: opacity .15s; }
-[data-jour].is-busy { opacity: .55; }
-.jr-grid { margin-bottom: 20px; }
-.count-inline { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--sand-100); font-size: 12px; font-weight: 800; color: var(--ink-700); }
-
-/* Programme : rendez-vous dans l'ordre */
-.jr-timeline { list-style: none; padding: 8px 0; }
-.jr-item { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 8px 16px; }
-.jr-time { display: grid; align-content: start; padding-top: 10px; font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.jr-time small { font-size: 12px; font-weight: 600; color: var(--muted); }
-.jr-card { display: flex; gap: 12px; padding: 10px; border-radius: 12px; border: 1px solid var(--line); border-left: 4px solid var(--c); background: var(--surface); cursor: pointer; transition: box-shadow .15s, border-color .15s; }
-.jr-card:hover, .jr-card:focus-visible { box-shadow: 0 8px 20px -12px rgba(17, 19, 23, .35); }
-.jr-img { width: 96px; aspect-ratio: 3 / 2; border-radius: 8px; object-fit: cover; flex: none; max-width: none; }
-.jr-main { display: grid; gap: 4px; min-width: 0; flex: 1; }
-.jr-what { font-size: 15px; }
-.jr-who { font-size: 13.5px; color: var(--ink-700); }
-.jr-who a, .jr-block a[href^="tel:"], .mini-list a[href^="tel:"] { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-btn-hover); font-weight: 700; white-space: nowrap; }
-.jr-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.jr-prep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 4px; padding: 8px 10px; border-radius: 10px; background: var(--warning-50); }
-.jr-now { display: flex; align-items: center; gap: 10px; padding: 4px 16px; font-size: 12px; font-weight: 800; color: var(--danger); }
-.jr-now::before, .jr-now::after { content: ""; height: 2px; background: var(--danger); }
-.jr-now::before { width: 52px; }
-.jr-now::after { flex: 1; }
-
-/* Cases à cocher des tâches */
-.jr-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.jr-check input { width: 18px; height: 18px; accent-color: var(--success); flex: none; }
-.jr-check.is-done { color: var(--muted); text-decoration: line-through; }
-
-/* Préparation : tâches par véhicule */
-.jr-veh-list { list-style: none; }
-.jr-veh { padding: 12px 16px; border-bottom: 1px solid var(--line); }
-.jr-veh:last-child { border-bottom: 0; }
-.jr-veh__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.jr-veh__head strong { display: block; font-size: 14px; }
-.jr-veh__head small { display: block; font-size: 12.5px; color: var(--muted); }
-.jr-veh__head:hover strong { text-decoration: underline; }
-.jr-veh__head .row-img { width: 56px; }
-.jr-tasks { list-style: none; display: grid; gap: 6px; padding-left: 66px; }
-.jr-tasks li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
-.jr-task-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.jr-ct li .row-img { width: 56px; }
-
-/* Secrétariat et propriétaire */
-.jr-block { border-bottom: 1px solid var(--line); }
-.jr-block:last-child { border-bottom: 0; }
-.jr-block h3 { display: flex; align-items: center; gap: 6px; padding: 14px 20px 4px; font-size: 14px; }
-.jr-block h3 .i { color: var(--brand-btn); }
-.jr-block .mini-list li { padding-top: 8px; padding-bottom: 8px; }
-
-@media (max-width: 1100px) {
-  .jr-pour { justify-content: flex-start; }
-}
+/* ---------------------------------------------------------------- Tableau de bord : liste « À faire » */
+.count-inline { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--brand-btn); font-size: 12px; font-weight: 800; color: #fff; }
+.count-inline:empty { display: none; }
+.todo { transition: opacity .15s; }
+.todo.is-busy { opacity: .6; }
+.todo__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.todo__pour { min-height: 34px; font-size: 13px; max-width: 220px; }
+.segmented--sm { padding: 3px; border-radius: 10px; }
+.segmented--sm button { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
+.td-list { list-style: none; padding-bottom: 4px; }
+.td-group { padding: 12px 20px 4px; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.td-row { display: flex; align-items: center; gap: 12px; padding: 9px 20px; border-bottom: 1px solid var(--line); }
+.td-row:hover { background: #fcfbf9; }
+.td-row[data-rdv] { cursor: pointer; }
+.td-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.td-body strong { font-size: 14px; }
+.td-body small { font-size: 12.5px; color: var(--muted); }
+.td-body small .is-warn { font-weight: 700; }
+.td-time { min-width: 48px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.td-rdv { border-left: 4px solid var(--c); padding-left: 16px; }
+.td-rdv.is-past { opacity: .6; }
+.td-prep { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--warning-50); }
+.td-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--ink-800); cursor: pointer; }
+.td-check input { width: 19px; height: 19px; accent-color: var(--success); flex: none; cursor: pointer; }
+.td-check.is-done, .td-row.is-done .td-body strong { color: var(--muted); text-decoration: line-through; }
+.td-row.is-done { background: #fbfaf7; }
+.td-ico { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--brand-50); color: var(--brand-btn-hover); }
+.td-ico .i { width: 16px; height: 16px; }
+.td-ico--warn { background: var(--warning-50); color: var(--warning); }
+.td-ico--danger { background: var(--danger-50); color: var(--danger); }
+.td-row > .td-check { width: 30px; justify-content: center; }
+.td-go { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; color: var(--muted); }
+.td-go:hover { background: var(--sand-100); color: var(--ink-900); }
+.td-tel { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-btn-hover); font-weight: 700; white-space: nowrap; }
+.td-row > .td-tel { flex: none; font-size: 13px; }
+.td-now { display: flex; align-items: center; gap: 10px; padding: 2px 20px; font-size: 11.5px; font-weight: 800; color: var(--danger); }
+.td-now::before { content: ""; width: 34px; height: 2px; background: var(--danger); }
+.td-now::after { content: ""; flex: 1; height: 2px; background: var(--danger); }
+.td-empty { color: var(--muted); font-size: 13.5px; }
+.td-empty .i { color: var(--sand); }
+.td-more a { font-size: 13px; font-weight: 700; color: var(--brand-btn-hover); }
+.td-note { display: flex; align-items: center; gap: 8px; margin: 12px 20px 0; padding: 8px 12px; border-radius: 10px; background: var(--bg); font-size: 13px; color: var(--muted); }
+.td-toggle { display: block; width: 100%; padding: 12px; font-size: 13.5px; font-weight: 700; color: var(--brand-btn-hover); border-top: 1px solid var(--line); }
+.td-toggle:hover { background: var(--brand-50); }
 @media (max-width: 600px) {
-  .jr-item { grid-template-columns: 48px minmax(0, 1fr); gap: 8px; padding: 6px 10px; }
-  .jr-time { font-size: 14px; }
-  .jr-card { flex-direction: column; }
-  .jr-img { width: 100%; }
-  .jr-tasks { padding-left: 0; }
-  .jr-title { font-size: 16px; }
-}
-
-/* Impression de la journée (feuille de route) */
-@media print {
-  body { background: #fff; }
-  .side, .topbar, .demo-banner, .toast, .pl-step, .jr-pour, .card__head .btn, .btn, .pl-hint { display: none !important; }
-  .app { display: block; }
-  .view { padding: 0; }
-  .card, .kpi { break-inside: avoid; box-shadow: none; }
-  .grid-2, .grid-2--wide, .grid-2--top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .jr-grid { break-inside: auto; }
-  a { color: inherit !important; text-decoration: none !important; }
-}
-/* Préparation en pleine largeur : une carte par véhicule */
-.jr-veh-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-.jr-veh { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line) !important; }
-.jr-tasks { padding-left: 0; }
-.jr-ct { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-.jr-ct li { border-bottom: 1px solid var(--line) !important; }
-@media (max-width: 600px) { .jr-veh-list, .jr-ct { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 600px) {
-  .jr-card { flex-direction: row; align-items: flex-start; }
-  .jr-img { width: 76px; }
-  .jr-pour { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; scrollbar-width: none; }
-  .jr-pour .chip { flex: none; }
+  .td-row { padding: 9px 14px; gap: 10px; align-items: flex-start; }
+  .td-group { padding-left: 14px; }
+  .td-row > .td-tel { display: none; }
+  .td-rdv .pill, .td-rdv .tag { display: none; }
+  .todo__tools { width: 100%; }
+  .todo__pour { flex: 1; max-width: none; }
 }
