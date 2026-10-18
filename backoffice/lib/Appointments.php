@@ -17,7 +17,7 @@ final class Appointments
 
     public static function rows(string $where, array $params, string $order = 'r.start_at'): array
     {
-        $rows = Db::all("SELECT r.*, v.marque, v.modele, v.version, v.numero_stock, v.immatriculation, v.pret_visite, v.statut AS vehicule_statut, v.parc_id AS vehicule_parc_id,
+        $rows = Db::all("SELECT r.*, v.marque, v.modele, v.version, v.numero_stock, v.immatriculation, v.pret_visite, v.statut AS vehicule_statut, v.parc_id AS vehicule_parc_id, v.photos AS vehicule_photos,
                 c.nom AS client_nom, c.prenom AS client_prenom, c.telephone AS client_tel, c.email AS client_email,
                 p.nom AS parc_nom, a.name AS assigne_nom, cr.name AS createur_nom
             FROM la_rendez_vous r
@@ -39,6 +39,7 @@ final class Appointments
             'vehicule' => trim($r['marque'] . ' ' . $r['modele']), 'vehiculeVersion' => $r['version'],
             'numeroStock' => $r['numero_stock'], 'immatriculation' => $r['immatriculation'],
             'vehiculePret' => (int) $r['pret_visite'] === 1, 'vehiculeStatut' => $r['vehicule_statut'],
+            'vehiculePhoto' => (json_decode((string) ($r['vehicule_photos'] ?? ''), true) ?: [])[0] ?? null,
             'clientId' => $r['client_id'] !== null ? (int) $r['client_id'] : null,
             'client' => $r['client_id'] !== null ? trim(($r['client_prenom'] ?? '') . ' ' . ($r['client_nom'] ?? '')) : null,
             'clientTelephone' => $r['client_tel'] ?? '', 'clientEmail' => $r['client_email'] ?? '',

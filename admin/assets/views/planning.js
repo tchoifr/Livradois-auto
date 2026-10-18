@@ -170,12 +170,15 @@
       BO.modal({
         title: r.motifLabel + " — " + fmt.dateLong(r.debut) + " à " + fmt.time(r.debut),
         wide: true,
-        body: '<div class="detail-grid">' +
+        body: '<a class="rdv-veh" href="#/vehicules/' + r.vehiculeId + '">' + BO.thumb(r.vehiculePhoto, "rdv-veh__img") +
+            '<span class="rdv-veh__info"><strong>' + esc(r.vehicule) + "</strong>" + (r.vehiculeVersion ? "<small>" + esc(r.vehiculeVersion) + "</small>" : "") +
+            "<small>" + esc([r.numeroStock, r.immatriculation].filter(Boolean).join(" · ")) + "</small>" +
+            '<span class="rdv-veh__tags">' + (r.vehiculePret ? '<span class="tag tag--ok">' + icon("check") + "Prêt pour le rendez-vous</span>" : '<span class="tag tag--warn">' + icon("clock") + "À préparer</span>") +
+            '<span class="rdv-veh__link">Voir la fiche ' + icon("chevron-right", "i--sm") + "</span></span></span></a>" +
+          '<div class="detail-grid">' +
           '<dl class="kv">' +
             "<dt>Statut</dt><dd>" + BO.pill("r", r.statut, r.statutLabel) + (r.enRetard ? ' <span class="tag tag--warn">À clôturer</span>' : "") + "</dd>" +
             "<dt>Horaire</dt><dd>" + fmt.time(r.debut) + " – " + fmt.time(r.fin) + "</dd>" +
-            '<dt>Véhicule</dt><dd><a href="#/vehicules/' + r.vehiculeId + '">' + esc(r.vehicule) + "</a> · " + esc(r.numeroStock || "") + " " + esc(r.immatriculation || "") +
-              (r.vehiculePret ? ' <span class="tag tag--ok">' + icon("check") + "Prêt</span>" : ' <a class="tag tag--warn" href="#/vehicules/' + r.vehiculeId + '/preparation">' + icon("clock") + "À préparer</a>") + "</dd>" +
             "<dt>Client</dt><dd>" + (r.clientId ? '<a href="#/clients/' + r.clientId + '">' + esc(r.client) + "</a>" : "—") +
               (r.clientTelephone ? ' · <a href="tel:' + esc(r.clientTelephone.replace(/[^\d+]/g, "")) + '">' + icon("phone", "i--sm") + esc(r.clientTelephone) + "</a>" : "") + "</dd>" +
             "<dt>Parc</dt><dd>" + esc(r.parc || "—") + "</dd>" +

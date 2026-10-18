@@ -564,3 +564,18 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
   .parc-filter { max-width: 140px; font-size: 13px; }
   .cal-nav { flex-wrap: wrap; }
 }
+
+/* Fiche d'un rendez-vous : photo du véhicule concerné */
+.rdv-veh { display: flex; align-items: center; gap: 16px; padding: 10px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); transition: border-color .15s, background-color .15s; }
+.rdv-veh:hover { border-color: var(--brand-btn); background: var(--brand-50); }
+.rdv-veh__img { width: 168px; aspect-ratio: 3 / 2; border-radius: 10px; object-fit: cover; flex: none; max-width: none; }
+.rdv-veh__img.noimg .i { width: 32px; height: 32px; }
+.rdv-veh__info { display: grid; gap: 2px; min-width: 0; }
+.rdv-veh__info strong { font-size: 17px; letter-spacing: -.01em; }
+.rdv-veh__info small { font-size: 13px; color: var(--muted); }
+.rdv-veh__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; }
+.rdv-veh__link { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; color: var(--brand-btn-hover); }
+@media (max-width: 600px) {
+  .rdv-veh { flex-direction: column; align-items: stretch; }
+  .rdv-veh__img { width: 100%; }
+}
