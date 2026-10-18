@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 final class Demo
 {
-    private const VERSION = 1;
+    private const VERSION = 2;
     private const TTL = 86400;
 
     public static function ensure(bool $force = false): void
@@ -82,6 +82,17 @@ final class Demo
                     [$statut, $statut === 'termine' ? $now : null, $secId, $now, $vid, (int) $items[$code]]);
             }
         }
+        // Tâches restantes : échéances (aujourd'hui, en retard, à venir) et responsables, pour la page « Aujourd'hui »
+        $today = date('Y-m-d');
+        $open = Db::all("SELECT c.id, i.code, v.parc_id FROM la_vehicule_checklist c JOIN la_checklist_items i ON i.id = c.item_id JOIN la_vehicules v ON v.id = c.vehicule_id
+            WHERE c.statut IN ('a_faire', 'en_cours') AND i.categorie IN ('preparation', 'documents', 'administratif', 'visite') ORDER BY c.vehicule_id, i.ordre");
+        foreach ($open as $n => $c) {
+            $nettoyage = str_starts_with($c['code'], 'nettoyage') || $c['code'] === 'photos' || $c['code'] === 'pret_visite';
+            $resp = $nettoyage ? ((int) $c['parc_id'] === $amb ? $refId : $secId) : ($n % 2 ? $adminId : null);
+            $ech = [$today, null, date('Y-m-d', strtotime('+3 days')), date('Y-m-d', strtotime('-2 days')), null, date('Y-m-d', strtotime('+6 days'))][$n % 6];
+            Db::exec('UPDATE la_vehicule_checklist SET responsable_id = ?, echeance = ? WHERE id = ?', [$resp, $ech, (int) $c['id']]);
+        }
+
         // Contrôles techniques : valide, bientôt échu, échu, non renseigné
         foreach ($byIndex as $k => $vid) {
             if ($k % 5 === 4) {

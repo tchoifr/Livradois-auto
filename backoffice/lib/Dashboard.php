@@ -94,6 +94,140 @@ final class Dashboard
         ];
     }
 
+    /** Catégories de préparation à terminer avant un rendez-vous, selon son motif. */
+    private const AVANT_RDV = ['visite' => ['preparation', 'visite'], 'essai' => ['preparation', 'visite'], 'livraison' => ['preparation', 'livraison']];
+
+    /**
+     * Programme d'une journée pour toute l'équipe : rendez-vous (et ce qu'il reste à préparer avant),
+     * tâches de préparation dues, contrôles techniques, secrétariat, gestion (propriétaire).
+     */
+    public static function journee(array $user, array $q): array
+    {
+        $date = In::date($q, 'date', false, 'date') ?? date('Y-m-d');
+        $parc = !empty($q['parc']) ? (int) $q['parc'] : null;
+        if ($parc !== null) {
+            Access::requireParc($user, $parc);
+        }
+        $pf = $parc ? ['parc' => $parc] : [];
+        $photo = fn($json) => (json_decode((string) $json ?: '[]', true) ?: [])[0] ?? null;
+
+        // Rendez-vous du jour (annulés exclus)
+        $rdv = array_values(array_filter(Appointments::list($user, $pf + ['du' => $date, 'au' => $date]), fn($r) => $r['statut'] !== 'annule'));
+        $avant = []; // véhicule => [catégories à terminer, heure du premier rendez-vous concerné, libellé]
+        foreach ($rdv as $r) {
+            if (isset(self::AVANT_RDV[$r['motif']]) && in_array($r['statut'], ['en_attente', 'confirme'], true) && !isset($avant[$r['vehiculeId']])) {
+                $avant[$r['vehiculeId']] = [self::AVANT_RDV[$r['motif']], substr($r['debut'], 11, 5), mb_strtolower($r['motifLabel'])];
+            }
+        }
+
+        // Véhicules du périmètre (stock et vendus non livrés)
+        [$vs, $vp] = Access::scope($user, 'v.parc_id');
+        $vehicules = [];
+        foreach (Db::all("SELECT v.*, p.nom AS parc_nom FROM la_vehicules v LEFT JOIN la_parcs p ON p.id = v.parc_id
+            WHERE v.statut IN ('brouillon', 'disponible', 'reserve', 'vendu')$vs" . ($parc ? ' AND v.parc_id = ?' : ''), array_merge($vp, $parc ? [$parc] : [])) as $v) {
+            $vehicules[(int) $v['id']] = $v;
+        }
+
+        // Tâches de préparation ouvertes : échéance atteinte, ou à terminer avant un rendez-vous du jour
+        $taches = [];
+        if ($vehicules) {
+            $ids = array_keys($vehicules);
+            $rows = [];
+            foreach (Db::all('SELECT c.*, a.name AS responsable FROM la_vehicule_checklist c LEFT JOIN la_admins a ON a.id = c.responsable_id WHERE c.vehicule_id IN (' . Db::in($ids) . ')', $ids) as $c) {
+                $rows[(int) $c['vehicule_id']][(int) $c['item_id']] = $c;
+            }
+            $items = Checklist::items();
+            foreach ($vehicules as $vid => $v) {
+                foreach ($items as $it) {
+                    $c = $rows[$vid][(int) $it['id']] ?? null;
+                    $statut = $c['statut'] ?? 'a_faire';
+                    if ($statut === 'termine' || $statut === 'non_necessaire') {
+                        continue;
+                    }
+                    $echeance = $c['echeance'] ?? null;
+                    $pourRdv = isset($avant[$vid]) && in_array($it['categorie'], $avant[$vid][0], true) && $it['code'] !== 'photos';
+                    $due = $echeance !== null && $echeance <= $date;
+                    if (!$pourRdv && !$due) {
+                        continue;
+                    }
+                    $taches[] = [
+                        'vehiculeId' => $vid, 'vehicule' => $v['marque'] . ' ' . $v['modele'], 'numeroStock' => $v['numero_stock'], 'parc' => $v['parc_nom'],
+                        'photo' => $photo($v['photos']), 'itemId' => (int) $it['id'], 'code' => $it['code'], 'libelle' => $it['libelle'], 'categorie' => $it['categorie'],
+                        'statut' => $statut, 'responsableId' => isset($c['responsable_id']) ? (int) $c['responsable_id'] : null, 'responsable' => $c['responsable'] ?? null,
+                        'echeance' => $echeance, 'commentaire' => (string) ($c['commentaire'] ?? ''),
+                        'avantRdv' => $pourRdv ? $avant[$vid][1] : null,
+                        'raison' => $pourRdv ? 'Avant le RDV de ' . str_replace(':', 'h', $avant[$vid][1]) . ' (' . $avant[$vid][2] . ')'
+                            : ($echeance < $date ? 'En retard (prévu le ' . date('d/m', strtotime($echeance)) . ')' : 'Prévu ce jour'),
+                    ];
+                }
+            }
+            usort($taches, fn($a, $b) => [$a['avantRdv'] ?? '99:99', $a['vehicule'], $a['itemId']] <=> [$b['avantRdv'] ?? '99:99', $b['vehicule'], $b['itemId']]);
+        }
+
+        // Contrôles techniques à passer (échus ou bientôt), avec le prochain rendez-vous de CT s'il existe
+        $ct = [];
+        $prochainCt = [];
+        if ($vehicules) {
+            $ids = array_keys($vehicules);
+            foreach (Db::all("SELECT vehicule_id, MIN(start_at) AS debut FROM la_rendez_vous WHERE motif = 'controle_technique' AND statut IN ('en_attente', 'confirme') AND start_at >= ? AND vehicule_id IN (" . Db::in($ids) . ') GROUP BY vehicule_id', array_merge([$date . ' 00:00:00'], $ids)) as $n) {
+                $prochainCt[(int) $n['vehicule_id']] = $n['debut'];
+            }
+        }
+        foreach ($vehicules as $vid => $v) {
+            if ($v['statut'] === 'vendu') {
+                continue;
+            }
+            $e = Vehicles::ctEtat($v);
+            if (in_array($e['etat'], ['echu', 'bientot'], true)) {
+                $ct[] = ['vehiculeId' => $vid, 'vehicule' => $v['marque'] . ' ' . $v['modele'], 'numeroStock' => $v['numero_stock'], 'parc' => $v['parc_nom'],
+                    'photo' => $photo($v['photos']), 'ct' => $e, 'rdvCt' => $prochainCt[$vid] ?? null];
+            }
+        }
+        usort($ct, fn($a, $b) => ($a['ct']['jours'] ?? 0) <=> ($b['ct']['jours'] ?? 0));
+
+        // Secrétariat
+        $demandes = Access::can($user, 'demandes.gerer') ? Requests::list($user, ['statut' => 'nouvelle']) : [];
+        $lendemain = date('Y-m-d', strtotime("$date +1 day"));
+        $secretariat = [
+            'demandes' => array_map(fn($d) => ['id' => $d['id'], 'type' => $d['type'], 'typeLabel' => Requests::TYPES[$d['type']] ?? $d['type'], 'nom' => $d['nom'], 'tel' => $d['tel'],
+                'montant' => $d['montant'], 'vehicule' => $d['vehicule']['titre'] ?? $d['vehiculeTitre'], 'createdAt' => $d['createdAt']], array_slice($demandes, 0, 8)),
+            'demandesTotal' => count($demandes),
+            'aConfirmer' => Appointments::list($user, $pf + ['du' => $date, 'au' => $lendemain, 'statut' => 'en_attente']),
+            'aCloturer' => Appointments::list($user, $pf + ['retard' => '1']),
+            'messagesEchec' => Access::can($user, 'messages.envoyer') ? array_slice(Notifications::list($user, ['statut' => 'echec']), 0, 5) : [],
+        ];
+
+        // Propriétaire : livraisons, réservations qui expirent, encaissements, factures à payer
+        $proprio = null;
+        if (Access::can($user, 'ventes.gerer') && Access::can($user, 'finance.voir')) {
+            $parcOf = [];
+            if ($parc) {
+                foreach (Db::all('SELECT id, parc_id FROM la_vehicules') as $p) {
+                    $parcOf[(int) $p['id']] = (int) $p['parc_id'];
+                }
+            }
+            $ventes = array_values(array_filter(Finance::ventes($user, []), fn($x) => $x['statut'] !== 'annulee' && (!$parc || ($parcOf[$x['vehiculeId']] ?? 0) === $parc)));
+            $aEnc = array_values(array_filter($ventes, fn($x) => $x['resteCentimes'] > 0));
+            $proprio = [
+                'livraisons' => array_values(array_filter($ventes, fn($x) => $x['statut'] === 'finalisee' && $x['dateLivraison'] && $x['dateLivraison'] <= $date)),
+                'reservations' => array_values(array_filter($ventes, fn($x) => $x['statut'] === 'reservee' && $x['dateLimiteReservation'] && $x['dateLimiteReservation'] <= $date)),
+                'aEncaisser' => ['totalCentimes' => array_sum(array_column($aEnc, 'resteCentimes')), 'ventes' => array_slice($aEnc, 0, 6), 'nombre' => count($aEnc)],
+                'aPayer' => array_map(fn($f) => ['id' => (int) $f['id'], 'vehiculeId' => (int) $f['vehicule_id'], 'vehicule' => $f['marque'] . ' ' . $f['modele'], 'numeroStock' => $f['numero_stock'],
+                    'libelle' => $f['libelle'] ?: (Finance::CATEGORIES[$f['categorie']] ?? $f['categorie']), 'tiers' => $f['tiers'], 'montantCentimes' => (int) $f['montant_centimes'], 'date' => $f['date_operation']],
+                    Db::all("SELECT f.*, v.marque, v.modele, v.numero_stock FROM la_finance_entries f JOIN la_vehicules v ON v.id = f.vehicule_id
+                        WHERE f.statut = 'valide' AND f.statut_paiement = 'a_payer' AND f.contre_ecriture_de_id IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM la_finance_entries x WHERE x.contre_ecriture_de_id = f.id)" . ($parc ? ' AND v.parc_id = ?' : '') . ' ORDER BY f.date_operation LIMIT 10', $parc ? [$parc] : [])),
+            ];
+        }
+
+        $jour = (string) date('w', strtotime($date));
+        return [
+            'date' => $date, 'horaires' => (array) (Settings::get('horaires')[$jour] ?? []),
+            'rendezVous' => $rdv, 'preparation' => ['taches' => $taches, 'ct' => $ct],
+            'secretariat' => $secretariat, 'proprietaire' => $proprio,
+        ];
+    }
+
     /** Recherche globale : immatriculation, numéro de stock, modèle, nom ou téléphone client. */
     public static function recherche(array $user, string $q): array
     {

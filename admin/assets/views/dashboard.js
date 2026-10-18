@@ -36,7 +36,8 @@
           '<select class="select" data-assigne>' + BO.f.userOptions("Toute l'équipe").map(function (o) { return '<option value="' + o.value + '"' + (String(o.value) === assigne ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select></label>" : "") + "</div>" +
         '<div class="kpis kpis--4">' + kpis.join("") + "</div>" +
         '<div class="grid-2">' +
-          '<section class="card"><div class="card__head"><h2>Rendez-vous du jour</h2><a class="btn btn--ghost btn--sm" href="#/planning?vue=jour">Planning</a></div>' +
+          '<section class="card"><div class="card__head"><h2>Rendez-vous du jour</h2><span class="row-actions"><a class="btn btn--primary btn--sm" href="#/aujourdhui">' + icon("clock") + "Programme du jour</a>" +
+            '<a class="btn btn--ghost btn--sm" href="#/planning?vue=jour">Planning</a></span></div>' +
             (t.rdv.jour.length ? '<ul class="mini-list">' + t.rdv.jour.map(rdvItem).join("") + "</ul>" : '<div class="empty">' + icon("calendar") + "<p>Aucun rendez-vous aujourd'hui.</p></div>") +
             (t.rdv.retard.length ? '<div class="card__sub"><h3>' + icon("clock") + " À clôturer (" + t.rdv.retard.length + ")</h3><ul class=\"mini-list\">" + t.rdv.retard.slice(0, 5).map(rdvItem).join("") + "</ul></div>" : "") +
           "</section>" +

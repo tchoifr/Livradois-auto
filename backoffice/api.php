@@ -30,6 +30,7 @@ $admin = [
         return Requests::stats($u);
     }],
     'GET admin/tableau' => [null, fn($u, $in) => Dashboard::tableau($u, $in)],
+    'GET admin/journee' => [null, fn($u, $in) => Dashboard::journee($u, $in)],
     'GET admin/recherche' => [null, fn($u, $in) => Dashboard::recherche($u, (string) ($in['q'] ?? ''))],
     'GET admin/references' => [null, fn($u) => [
         'parcs' => Parcs::list($u, Access::can($u, 'parcs.gerer')),

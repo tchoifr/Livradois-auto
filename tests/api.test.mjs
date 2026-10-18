@@ -119,6 +119,11 @@ const both = await Promise.all([v1.dbId, v2.dbId].map((vid) => call("admin/rende
 ok(both.every((r) => r.status === 200), "deux véhicules différents réservés en même temps dans le même parc");
 ok((await call("admin/rendez-vous", { token: SN, body: { vehiculeId: v3.dbId, clientId: R1.clientId, motif: "visite", debut: d3 } })).status === 403, "rendez-vous sur un véhicule hors périmètre refusé");
 
+const jr = (await call("admin/journee", { token: SN, query: { date: d3.slice(0, 10) } })).data;
+ok(jr && jr.rendezVous.some((r) => r.id === R1.id) && Array.isArray(jr.preparation.taches) && jr.secretariat && jr.proprietaire === null,
+  "page Aujourd'hui (secrétaire) : rendez-vous du jour, préparation, secrétariat, sans les données du propriétaire", jr && { rdv: jr.rendezVous.length, proprio: jr.proprietaire });
+const jrA = (await call("admin/journee", { token: A, query: { date: d3.slice(0, 10) } })).data;
+ok(jrA && jrA.proprietaire && "aEncaisser" in jrA.proprietaire && jrA.rendezVous.some((r) => r.id === R1.id), "page Aujourd'hui (propriétaire) : partie gestion présente");
 const slots = (await call("admin/rendez-vous/creneaux", { token: SN, query: { vehicule: v1.dbId, date: d3.slice(0, 10), motif: "visite" } })).data;
 const s10 = slots.creneaux.find((s) => s.debut.slice(11, 16) === "10:00"), s1130 = slots.creneaux.find((s) => s.debut.slice(11, 16) === "11:30");
 ok(s10 && !s10.libre && s1130 && s1130.libre, "créneaux : occupés et libres correctement affichés");
