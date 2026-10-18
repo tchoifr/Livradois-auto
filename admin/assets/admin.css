@@ -615,7 +615,7 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
 .mg-day:nth-child(7n) { border-right: 0; }
 .mg-day:hover { background: #fcfbf9; }
 .mg-day.is-out { background: var(--bg); }
-.mg-day.is-out .mg-num { color: #a6a29b; }
+.mg-day.is-out:not(.is-today) .mg-num { color: #827c73; }
 .mg-num { align-self: flex-start; display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 4px; border-radius: 999px; font-size: 13px; font-weight: 800; }
 .mg-day.is-today .mg-num { background: var(--brand-btn); color: #fff; }
 .mg-ev { display: block; width: 100%; padding: 3px 6px; border-radius: 6px; border-left: 3px solid var(--c); background: var(--bg); color: var(--fg); font-size: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -692,7 +692,7 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
 .tg-dayhead strong { padding: 3px 10px; border-radius: 8px; font-size: 14px; font-weight: 800; color: var(--ink-900); }
 .tg-dayhead em { font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .tg-dayhead.is-today strong { background: var(--brand-btn); color: #fff; }
-.tg-dayhead.is-closed strong { color: var(--muted); }
+.tg-dayhead.is-closed:not(.is-today) strong { color: var(--muted); }
 .tg-body > .tg-col.is-today { background-color: rgba(232, 243, 245, .35); }
 
 /* Rendez-vous à clôturer : couleur du statut conservée, simple pastille horloge */
@@ -726,8 +726,8 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
 .mc-wnum:hover, .mc-wnum.is-sel { background: var(--brand-btn); color: #fff; }
 .mc-day { height: 34px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--ink-800); }
 .mc-day:hover { background: var(--sand-100); }
-.mc-day.is-out { color: #a6a29b; }
-.mc-day.is-closed { color: #b8b3ab; }
+.mc-day.is-out:not(.is-today) { color: #827c73; }
+.mc-day.is-closed:not(.is-today) { color: #827c73; }
 .mc-day.is-today { box-shadow: inset 0 0 0 1.5px var(--brand-btn); color: var(--brand-btn-hover); }
 .mc-day.is-inweek { background: var(--brand-50); border-radius: 0; }
 .mc-day.is-sel:not(.is-inweek) { background: var(--brand-btn); color: #fff; }
@@ -749,7 +749,7 @@ a.tag:hover { filter: brightness(.96); text-decoration: none; }
 .mv-day.is-today strong { color: var(--brand-btn-hover); }
 .mv-day.is-current { border-style: dashed; border-color: var(--brand-btn); }
 .mv-day.is-closed { background: var(--bg); }
-.mv-day.is-closed strong { color: var(--muted); }
+.mv-day.is-closed:not(.is-today) strong { color: var(--muted); }
 .mv-day.is-sel { background: var(--ink-900); border-color: var(--ink-900); }
 .mv-day.is-sel span, .mv-day.is-sel small, .mv-day.is-sel strong { color: #fff; }
 .mv-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
