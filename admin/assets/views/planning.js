@@ -5,7 +5,7 @@
   var JOURS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
   var VUES = [["jour", "Jour", "J"], ["semaine", "Semaine", "S"], ["mois", "Mois", "M"], ["liste", "Liste", "L"]];
   var PX = 76;          // hauteur d'une heure dans la grille (px) : 30 min = 2 lignes lisibles
-  var SNAP = 15;        // pas de placement et de déplacement (minutes)
+  var SNAP_DUREE = 15;  // pas de réglage d'une durée (bord inférieur d'un rendez-vous)
   var ACTIFS = ["en_attente", "confirme"];
 
   function pad(n) { return String(n).padStart(2, "0"); }
@@ -20,6 +20,29 @@
   function openings(d) { return ((BO.ref("horaires") || {})[String(d.getDay())] || []).map(function (x) { return [toMin(x[0]), toMin(x[1])]; }); }
   function isMobile() { return window.matchMedia("(max-width: 700px)").matches; }
   function late(r) { return ACTIFS.indexOf(r.statut) !== -1 && r.enRetard; }
+  function dureeOf(r) { return endMin(r) - minutes(r.debut); }
+  function defaultDuree() { var m = (BO.ref("motifs") || [])[0]; return m ? +m.duree : 30; }
+  function isoWeek(d) {
+    var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), n = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - n);
+    return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  }
+  /**
+   * Même logique que les créneaux proposés par le serveur : des pas de la durée du rendez-vous,
+   * alignés sur l'heure d'ouverture (visite de 30 min : 8h00, 8h30… ; essai de 45 min : 8h00, 8h45…).
+   * Hors horaires d'ouverture : pas alignés sur minuit. mode « floor » = case sous le pointeur, « round » = la plus proche.
+   */
+  function snapStart(d, m, pas, mode) {
+    var f = mode === "floor" ? Math.floor : Math.round, o = openings(d);
+    for (var i = 0; i < o.length; i++) {
+      if (m >= o[i][0] - (mode === "floor" ? 0 : pas / 2) && m < o[i][1]) {
+        var t = o[i][0] + f((m - o[i][0]) / pas) * pas, last = o[i][0] + Math.floor((o[i][1] - o[i][0] - pas) / pas) * pas;
+        if (last >= o[i][0]) t = Math.min(t, last);
+        return Math.max(o[i][0], t);
+      }
+    }
+    return f(m / pas) * pas;
+  }
 
   /** Rendez-vous qui se chevauchent : répartis côte à côte, les autres gardent toute la largeur. */
   function layout(evs) {
@@ -53,10 +76,11 @@
     view.innerHTML =
       '<div class="pl-bar">' +
         '<div class="pl-nav">' +
-          '<button type="button" class="btn btn--ghost btn--sm" data-today title="Aujourd\'hui (T)">Aujourd\'hui</button>' +
-          '<span class="pl-arrows"><button type="button" class="icon-btn" data-prev title="Précédent (←)" aria-label="Période précédente">' + icon("chevron-left") + "</button>" +
-          '<button type="button" class="icon-btn" data-next title="Suivant (→)" aria-label="Période suivante">' + icon("chevron-right") + "</button></span>" +
-          '<span class="pl-title"><button type="button" data-goto-btn title="Choisir une date"><span data-label></span>' + icon("chevron-down", "i--sm") + '</button><input type="date" data-goto tabindex="-1" aria-label="Aller à une date"></span>' +
+          '<div class="pl-step"><button type="button" class="pl-step__btn" data-prev aria-label="Période précédente">' + icon("chevron-left") + "</button>" +
+          '<button type="button" class="pl-step__today" data-today title="Aujourd\'hui (T)">Aujourd\'hui</button>' +
+          '<button type="button" class="pl-step__btn" data-next aria-label="Période suivante">' + icon("chevron-right") + "</button></div>" +
+          '<div class="pl-title"><button type="button" data-mc-toggle aria-expanded="false" aria-haspopup="dialog" title="Choisir une semaine ou un jour"><span data-label></span><span class="pl-week" data-week></span>' + icon("chevron-down", "i--sm") + "</button>" +
+            '<div class="mc" data-mc hidden role="dialog" aria-label="Choisir une date"></div></div>' +
         "</div>" +
         '<div class="pl-right">' +
           '<div class="segmented" role="group" aria-label="Affichage">' + VUES.map(function (v) { return '<button type="button" data-vue="' + v[0] + '" title="' + v[1] + " (" + v[2] + ')">' + v[1] + "</button>"; }).join("") + "</div>" +
@@ -65,7 +89,7 @@
       "</div>" +
       '<div class="pl-sub"><div class="active-filters" data-active></div>' +
         '<div class="pl-legend">' + ["confirme", "en_attente", "termine", "absent"].map(function (k) { return '<span><i class="lg lg--' + k + '"></i>' + esc(statuts[k] || k) + "</span>"; }).join("") +
-        '<span><i class="lg lg--late"></i>À clôturer</span></div></div>' +
+        '<span><i class="lg-late">' + icon("clock", "i--xs") + "</i>À clôturer</span></div></div>" +
       '<div data-cal><p class="loading">Chargement…</p></div>' +
       // Panneau de filtres (même principe que le catalogue du site)
       '<aside class="fdrawer" id="pl-filtres" aria-label="Filtres du planning" aria-hidden="true">' +
@@ -110,6 +134,39 @@
       else d = BO.addDays(d, 7 * n);
       st.date = BO.isoDate(d);
       load();
+    }
+
+    /* ---------- mini-calendrier : aller directement à une semaine ou à un jour ---------- */
+    var mcMonth = null;
+    function renderMc() {
+      var first = new Date(mcMonth.getFullYear(), mcMonth.getMonth(), 1), start = monday(first);
+      var selWeek = BO.isoDate(monday(parseDay(st.date))), today = BO.isoDate(new Date()), parWeek = st.vue === "semaine" || st.vue === "liste";
+      var html = '<div class="mc-head"><button type="button" class="icon-btn" data-mc-month="-1" aria-label="Mois précédent">' + icon("chevron-left") + "</button>" +
+        "<strong>" + capital(first.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })) + "</strong>" +
+        '<button type="button" class="icon-btn" data-mc-month="1" aria-label="Mois suivant">' + icon("chevron-right") + "</button></div>" +
+        '<div class="mc-grid"><span class="mc-wk">Sem.</span>' + ["L", "M", "M", "J", "V", "S", "D"].map(function (x) { return "<span>" + x + "</span>"; }).join("");
+      for (var w = 0; w < 6; w++) {
+        var ws = BO.addDays(start, w * 7), wIso = BO.isoDate(ws), weekOn = parWeek && wIso === selWeek;
+        if (w > 0 && ws > first && ws.getMonth() !== first.getMonth()) break;
+        html += '<button type="button" class="mc-wnum' + (weekOn ? " is-sel" : "") + '" data-mc-week="' + wIso + '" title="Afficher la semaine ' + isoWeek(ws) + '">' + isoWeek(ws) + "</button>";
+        for (var i = 0; i < 7; i++) {
+          var d = BO.addDays(ws, i), iso = BO.isoDate(d);
+          html += '<button type="button" class="mc-day' + (d.getMonth() !== first.getMonth() ? " is-out" : "") + (iso === today ? " is-today" : "") +
+            (weekOn || (st.vue === "jour" && iso === st.date) ? " is-sel" : "") + (weekOn ? " is-inweek" : "") + (!openings(d).length ? " is-closed" : "") + '" data-mc-day="' + iso + '">' + d.getDate() + "</button>";
+        }
+      }
+      $("[data-mc]", view).innerHTML = html + '</div><div class="mc-foot"><button type="button" class="btn btn--ghost btn--sm" data-mc-today>Aujourd\'hui</button>' +
+        '<span class="muted small">N° de semaine : afficher toute la semaine</span></div>';
+    }
+    function openMc() {
+      mcMonth = parseDay(st.date);
+      renderMc();
+      $("[data-mc]", view).hidden = false;
+      $("[data-mc-toggle]", view).setAttribute("aria-expanded", "true");
+    }
+    function closeMc() {
+      var b = $("[data-mc]", view);
+      if (b && !b.hidden) { b.hidden = true; $("[data-mc-toggle]", view).setAttribute("aria-expanded", "false"); }
     }
 
     /* ---------- filtres ---------- */
@@ -165,8 +222,14 @@
       saveQuery();
       $$("[data-vue]", view).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-vue") === st.vue && !st.retard)); });
       $("[data-label]", view).textContent = label();
-      $("[data-goto]", view).value = st.date;
+      $("[data-week]", view).textContent = st.retard || st.vue === "mois" ? "" : "Sem. " + isoWeek(parseDay(st.date));
+      var unite = { jour: ["Jour précédent", "Jour suivant"], mois: ["Mois précédent", "Mois suivant"] }[st.vue] || ["Semaine précédente", "Semaine suivante"];
+      $("[data-prev]", view).title = unite[0] + " (←)";
+      $("[data-next]", view).title = unite[1] + " (→)";
+      $("[data-prev]", view).setAttribute("aria-label", unite[0]);
+      $("[data-next]", view).setAttribute("aria-label", unite[1]);
       $$("[data-prev], [data-next]", view).forEach(function (b) { b.disabled = st.retard; });
+      closeMc();
       var r = range(), my = ++seq;
       cal.classList.add("is-busy");
       return BO.api("admin/rendez-vous", { query: { du: BO.isoDate(r[0]), au: BO.isoDate(r[1]), parc: BO.parcFilter(), retard: st.retard ? "1" : "" } }).then(function (list) {
@@ -211,16 +274,9 @@
       var head = "", cols = "";
       ds.forEach(function (d) {
         var iso = BO.isoDate(d), evs = list.filter(function (r) { return r.debut.slice(0, 10) === iso; }).sort(function (a, b) { return a.debut.localeCompare(b.debut); });
-        var open = openings(d), closed = !open.length;
+        var closed = !openings(d).length;
         head += '<button type="button" class="tg-dayhead' + (iso === today ? " is-today" : "") + (closed ? " is-closed" : "") + '" data-day="' + iso + '" title="Voir la journée">' +
-          "<span>" + JOURS[d.getDay()] + "</span><strong>" + d.getDate() + "</strong><em>" + (closed ? "Fermé" : evs.length ? fmt.plural(evs.length, "RDV", "RDV") : "") + "</em></button>";
-        // Zones fermées (hors horaires d'ouverture)
-        var shade = "", cur = hr[0];
-        open.concat([[hr[1], hr[1]]]).forEach(function (o) {
-          var a = Math.max(o[0], hr[0]), b = Math.min(o[1], hr[1]);
-          if (a > cur) shade += '<div class="tg-closed" style="top:' + ((cur - hr[0]) / 60 * PX) + "px;height:" + ((a - cur) / 60 * PX) + 'px"></div>';
-          cur = Math.max(cur, b);
-        });
+          "<strong>" + capital(JOURS[d.getDay()]) + " " + d.getDate() + "</strong><em>" + (closed ? "Fermé" : evs.length ? fmt.plural(evs.length, "RDV", "RDV") : "") + "</em></button>";
         layout(evs);
         var items = evs.map(function (r) {
           var s = Math.max(minutes(r.debut), hr[0]), e = Math.min(endMin(r), hr[1]);
@@ -232,20 +288,21 @@
           return '<div role="button" tabindex="0" class="tg-ev ev--' + r.statut + (late(r) ? " is-late" : "") + mode + (movable ? " is-movable" : "") + '" data-rdv="' + r.id + '" ' +
             'style="top:' + top + "px;height:" + h + "px;left:calc(" + (r._col * w) + "% + 2px);width:calc(" + w + '% - 4px)" ' +
             'title="' + esc(fmt.time(r.debut) + " – " + fmt.time(r.fin) + " · " + r.motifLabel + " · " + r.vehicule + (r.client ? " · " + r.client : "") + (late(r) ? " · à clôturer" : "") + (movable ? "\nGlisser pour déplacer" : "")) + '">' +
+            (late(r) ? '<span class="tg-ev__late" title="À clôturer">' + icon("clock", "i--xs") + "</span>" : "") +
             (day && h >= 34 ? BO.thumb(r.vehiculePhoto, "tg-ev__img") : "") +
-            '<span class="tg-ev__txt"><span class="tg-ev__time">' + fmt.time(r.debut) + (h >= 50 || day ? " – " + fmt.time(r.fin) : "") + (late(r) ? " " + icon("clock", "i--xs") : "") + "</span>" +
+            '<span class="tg-ev__txt"><span class="tg-ev__time">' + fmt.time(r.debut) + (h >= 50 || day ? " – " + fmt.time(r.fin) : "") + "</span>" +
             "<strong>" + esc(r.vehicule) + (day && r.numeroStock ? ' <small>' + esc(r.numeroStock) + "</small>" : "") + "</strong>" +
             '<span class="tg-ev__sub">' + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" +
             (movable ? '<span class="tg-ev__resize" data-resize title="Changer la durée"></span>' : "") + "</div>";
         }).join("");
         var nowLine = iso === today && nowMin >= hr[0] && nowMin <= hr[1] ? '<div class="tg-now" style="top:' + ((nowMin - hr[0]) / 60 * PX) + 'px"></div>' : "";
-        cols += '<div class="tg-col' + (iso === today ? " is-today" : "") + '" data-date="' + iso + '" style="height:' + height + 'px">' + shade + nowLine + items + '<div class="tg-hover" hidden></div></div>';
+        cols += '<div class="tg-col' + (iso === today ? " is-today" : "") + '" data-date="' + iso + '" style="height:' + height + 'px">' + nowLine + items + '<div class="tg-hover" hidden></div></div>';
       });
       return '<div class="tg-scroll"><div class="tg' + (ds.length === 1 ? " tg--day" : "") + '" style="--cols:' + ds.length + ";--px:" + PX + 'px">' +
         '<div class="tg-head"><div class="tg-corner"></div>' + head + "</div>" +
         '<div class="tg-body"><div class="tg-hours" style="height:' + height + 'px">' + hours + "</div>" + cols + "</div></div></div>" +
         (ds.length === 1 && !openings(ds[0]).length ? '<p class="note">' + icon("info") + "Le garage est fermé ce jour-là (horaires dans Paramètres). Vous pouvez quand même placer un rendez-vous.</p>" : "") +
-        '<p class="pl-hint muted small">Cliquez dans une case libre pour créer un rendez-vous · glissez un rendez-vous pour le déplacer, tirez son bord inférieur pour changer sa durée.</p>';
+        '<p class="pl-hint muted small">Cliquez dans une case libre pour créer un rendez-vous (créneaux de ' + defaultDuree() + ' min) · glissez un rendez-vous pour le déplacer sur un autre créneau, tirez son bord inférieur pour changer sa durée · pour l\'envoyer sur une autre semaine : ouvrez-le puis « Déplacer ».</p>';
     }
     // Place la vue sur l'heure utile : maintenant (si aujourd'hui est affiché), sinon le premier rendez-vous, sinon l'ouverture
     function scrollGrid(list) {
@@ -257,9 +314,16 @@
       else { var o = openings(days()[0])[0]; target = o ? o[0] - 30 : 8 * 60; }
       box.scrollTop = Math.max(0, (target - grid[0]) / 60 * PX);
     }
-    function pointMinutes(col, clientY) {
-      var y = clientY - col.getBoundingClientRect().top;
-      return grid[0] + Math.floor(y / PX * 60 / SNAP) * SNAP;
+    // Créneau (durée du motif par défaut) sous le pointeur : mêmes cases que dans la prise de rendez-vous
+    function pointSlot(col, clientY) {
+      var m = grid[0] + (clientY - col.getBoundingClientRect().top) / PX * 60;
+      return snapStart(parseDay(col.getAttribute("data-date")), m, defaultDuree(), "floor");
+    }
+    // Autre rendez-vous actif du même véhicule sur ce créneau ?
+    function conflit(r, date, start, end) {
+      return data.filter(function (x) {
+        return x.id !== r.id && x.vehiculeId === r.vehiculeId && ACTIFS.indexOf(x.statut) !== -1 && x.debut.slice(0, 10) === date && minutes(x.debut) < end && endMin(x) > start;
+      })[0];
     }
 
     /* ---------- mois ---------- */
@@ -339,24 +403,32 @@
       if (!drag.started && Math.abs(dx) + Math.abs(dy) < 6) return;
       if (!drag.started) { drag.started = true; drag.el.classList.add("is-dragging"); cal.classList.add("is-dragging"); $$(".tg-hover", cal).forEach(function (h) { h.hidden = true; }); }
       e.preventDefault();
-      var dur = endMin(drag.r) - minutes(drag.r.debut), t = $(".tg-ev__time", drag.el);
+      var dur = dureeOf(drag.r), t = $(".tg-ev__time", drag.el), c;
       if (drag.resize) {
-        var nd = Math.max(SNAP, Math.round((drag.h0 + 2 + dy) / PX * 60 / SNAP) * SNAP);
+        var nd = Math.max(SNAP_DUREE, Math.round((drag.h0 + 2 + dy) / PX * 60 / SNAP_DUREE) * SNAP_DUREE);
         nd = Math.min(nd, grid[1] - minutes(drag.r.debut));
         drag.dur = nd;
+        c = conflit(drag.r, drag.r.debut.slice(0, 10), minutes(drag.r.debut), minutes(drag.r.debut) + nd);
+        drag.conflict = c;
+        drag.el.classList.toggle("is-conflict", !!c);
         drag.el.style.height = (nd / 60 * PX - 2) + "px";
-        t.textContent = fmt.time(drag.r.debut) + " – " + hm(minutes(drag.r.debut) + nd).replace(":", "h");
+        t.textContent = c ? "Occupé à " + fmt.time(c.debut) : fmt.time(drag.r.debut) + " – " + hm(minutes(drag.r.debut) + nd).replace(":", "h") + " (" + nd + " min)";
         return;
       }
       drag.el.style.pointerEvents = "none";
       var under = document.elementFromPoint(e.clientX, e.clientY), col = under && under.closest(".tg-col");
       drag.el.style.pointerEvents = "";
       if (col && col !== drag.el.parentElement) { col.appendChild(drag.el); drag.el.style.left = "2px"; drag.el.style.width = "calc(100% - 4px)"; }
-      var start = minutes(drag.r.debut) + Math.round(dy / PX * 60 / SNAP) * SNAP;
+      var date = drag.el.parentElement.getAttribute("data-date");
+      // Calage sur les créneaux de la durée du rendez-vous (comme la prise de rendez-vous)
+      var start = snapStart(parseDay(date), minutes(drag.r.debut) + dy / PX * 60, dur, "round");
       start = Math.max(grid[0], Math.min(grid[1] - dur, start));
       drag.start = start;
+      c = conflit(drag.r, date, start, start + dur);
+      drag.conflict = c;
+      drag.el.classList.toggle("is-conflict", !!c);
       drag.el.style.top = ((start - grid[0]) / 60 * PX) + "px";
-      t.textContent = hm(start).replace(":", "h") + " – " + hm(start + dur).replace(":", "h");
+      t.textContent = c ? "Occupé (" + fmt.time(c.debut) + " – " + fmt.time(c.fin) + ")" : hm(start).replace(":", "h") + " – " + hm(start + dur).replace(":", "h");
     }
     function dragEnd() {
       window.removeEventListener("pointermove", dragMove);
@@ -370,8 +442,13 @@
       justDragged = true;
       setTimeout(function () { justDragged = false; }, 80);
       d.el.classList.remove("is-dragging");
+      if (d.conflict) {
+        BO.toast("Ce véhicule a déjà un rendez-vous de " + fmt.time(d.conflict.debut) + " à " + fmt.time(d.conflict.fin) + " ce jour-là : choisissez un autre créneau.", true);
+        render();
+        return;
+      }
       if (d.resize) {
-        if (!d.dur || d.dur === endMin(d.r) - minutes(d.r.debut)) { render(); return; }
+        if (!d.dur || d.dur === dureeOf(d.r)) { render(); return; }
         moveTo(d.r, d.r.debut.slice(0, 16), d.dur);
         return;
       }
@@ -396,11 +473,11 @@
       var colH = e.target.closest(".tg-col");
       $$(".tg-hover:not([hidden])", cal).forEach(function (h) { if (!colH || h.parentElement !== colH) h.hidden = true; });
       if (!colH || e.target.closest(".tg-ev") || e.pointerType === "touch") { if (colH) $(".tg-hover", colH).hidden = true; return; }
-      var mm = pointMinutes(colH, e.clientY), hv = $(".tg-hover", colH);
+      var mm = pointSlot(colH, e.clientY), dd = defaultDuree(), hv = $(".tg-hover", colH);
       hv.hidden = false;
       hv.style.top = ((mm - grid[0]) / 60 * PX) + "px";
-      hv.style.height = (30 / 60 * PX) + "px";
-      hv.textContent = "+ " + hm(mm).replace(":", "h");
+      hv.style.height = (dd / 60 * PX - 2) + "px";
+      hv.textContent = "+ " + hm(mm).replace(":", "h") + " – " + hm(mm + dd).replace(":", "h");
     });
     cal.addEventListener("pointerleave", function () { $$(".tg-hover", cal).forEach(function (h) { h.hidden = true; }); });
 
@@ -408,11 +485,21 @@
     view.addEventListener("click", function (e) {
       var t = e.target;
       if (justDragged) return;
+      // Mini-calendrier
+      if (t.closest("[data-mc-toggle]")) { if ($("[data-mc]", view).hidden) openMc(); else closeMc(); return; }
+      var mcm = t.closest("[data-mc-month]");
+      if (mcm) { mcMonth = new Date(mcMonth.getFullYear(), mcMonth.getMonth() + +mcm.getAttribute("data-mc-month"), 1); renderMc(); return; }
+      var mcw = t.closest("[data-mc-week]");
+      if (mcw) { st.date = mcw.getAttribute("data-mc-week"); if (st.vue !== "liste") st.vue = "semaine"; st.retard = false; load(); return; }
+      var mcd = t.closest("[data-mc-day]");
+      if (mcd) { st.date = mcd.getAttribute("data-mc-day"); st.retard = false; load(); return; }
+      if (t.closest("[data-mc-today]")) { st.date = BO.isoDate(new Date()); st.retard = false; load(); return; }
+      if (t.closest("[data-mc]")) return;
+      closeMc();
       if (t.closest("[data-vue]")) { st.vue = t.closest("[data-vue]").getAttribute("data-vue"); st.retard = false; load(); return; }
       if (t.closest("[data-prev]")) { step(-1); return; }
       if (t.closest("[data-next]")) { step(1); return; }
       if (t.closest("[data-today]")) { st.date = BO.isoDate(new Date()); st.retard = false; load(); return; }
-      if (t.closest("[data-goto-btn]")) { var gi = $("[data-goto]", view); try { gi.showPicker(); } catch (x) { gi.focus(); } return; }
       if (t.closest("[data-open-filters]")) { openFilters(true); return; }
       if (t.closest("[data-close-filters]")) { openFilters(false); return; }
       if (t.closest("[data-reset]")) { st.motif = []; st.statut = []; st.assigne = ""; st.vehicule = ""; st.annules = false; var wasLate = st.retard; st.retard = false; if (wasLate) load(); else { saveQuery(); render(); } return; }
@@ -434,7 +521,7 @@
       var ev = t.closest("[data-rdv]");
       if (ev) { openDetail(+ev.getAttribute("data-rdv"), load); return; }
       var col = t.closest(".tg-col");
-      if (col) { BO.go("#/planning/nouveau?date=" + col.getAttribute("data-date") + "&heure=" + hm(pointMinutes(col, e.clientY)) + (st.vehicule ? "&vehicule=" + st.vehicule : "")); return; }
+      if (col) { BO.go("#/planning/nouveau?date=" + col.getAttribute("data-date") + "&heure=" + hm(pointSlot(col, e.clientY)) + (st.vehicule ? "&vehicule=" + st.vehicule : "")); return; }
       var day = t.closest("[data-day]");
       if (day) { st.vue = "jour"; st.date = day.getAttribute("data-day"); st.retard = false; load(); }
     });
@@ -443,7 +530,6 @@
       if (ev && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDetail(+ev.getAttribute("data-rdv"), load); }
     });
     view.addEventListener("change", function (e) {
-      if (e.target.matches("[data-goto]") && e.target.value) { st.date = e.target.value; st.retard = false; load(); }
       if (e.target.matches("[data-fvehicule]")) { st.vehicule = e.target.value; saveQuery(); render(); }
       if (e.target.matches("[data-fopt]")) {
         var k = e.target.getAttribute("data-fopt");
@@ -456,6 +542,7 @@
     function onKey(e) {
       if (!document.body.contains(view)) { document.removeEventListener("keydown", onKey); return; }
       if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || document.querySelector("dialog[open]")) return;
+      if (e.key === "Escape" && !$("[data-mc]", view).hidden) { closeMc(); return; }
       if (e.key === "Escape" && drawer.classList.contains("is-open")) { openFilters(false); return; }
       if (drawer.classList.contains("is-open")) return;
       var k = e.key.toLowerCase();
@@ -465,6 +552,12 @@
       else { var v = VUES.filter(function (x) { return x[2].toLowerCase() === k; })[0]; if (v) { st.vue = v[0]; st.retard = false; load(); } }
     }
     document.addEventListener("keydown", onKey);
+    function onDocClick(e) {
+      if (!document.body.contains(view)) { document.removeEventListener("click", onDocClick); return; }
+      // composedPath : le bouton cliqué a pu être redessiné entre-temps (changement de mois)
+      if (e.composedPath().indexOf(view) === -1) closeMc();
+    }
+    document.addEventListener("click", onDocClick);
     var touch = null;
     cal.addEventListener("touchstart", function (e) { touch = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
     cal.addEventListener("touchend", function (e) {
@@ -503,7 +596,7 @@
       if (actif) {
         actions.push({ label: "Terminé", icon: "check", onClick: function () { return setStatut(r, "termine", reload); } });
         actions.push({ label: "Absent", onClick: function () { return setStatut(r, "absent", reload); } });
-        actions.push({ label: "Déplacer", icon: "edit", onClick: function () { BO.go("#/planning/" + r.id + "/modifier"); } });
+        actions.push({ label: "Déplacer", icon: "calendar", onClick: function () { moveDialog(r, reload); } });
         actions.push({ label: "Message", icon: "mail", onClick: function () { return BO.api("admin/notifications/apercu", { query: { rendezVousId: r.id, template: r.statut === "confirme" ? "confirmation" : "rappel" } }).then(BO.proposeMessage); } });
         actions.push({ label: "Annuler le RDV", danger: true, onClick: function () { return cancel(r, reload); } });
       }
@@ -526,7 +619,8 @@
             "<dt>Créé par</dt><dd>" + esc(r.creePar || "—") + " · " + fmt.datetime(r.createdAt) + "</dd>" +
             (r.notes ? "<dt>Notes</dt><dd>" + esc(r.notes) + "</dd>" : "") +
             (r.motifAnnulation ? "<dt>Annulation</dt><dd>" + esc(r.motifAnnulation) + "</dd>" : "") +
-          "</dl><div><h3 class=\"subhead\">Messages</h3>" + msgs + "</div></div>",
+          "</dl><div><h3 class=\"subhead\">Messages</h3>" + msgs +
+          (actif ? '<p class="small" style="margin-top:14px"><a class="link" href="#/planning/' + r.id + '/modifier">' + icon("edit", "i--sm") + " Modifier le client, le motif ou les notes</a></p>" : "") + "</div></div>",
         actions: actions,
       });
     }).catch(BO.fail);
@@ -553,6 +647,100 @@
     });
   }
 
+  /* ---------------------------------------------------------------- déplacer un rendez-vous (n'importe quelle semaine) */
+  function moveDialog(r, reload) {
+    var dur = dureeOf(r), cur = r.debut.slice(0, 16);
+    var sel = { date: r.debut.slice(0, 10), slot: null };
+    sel.week = monday(parseDay(sel.date));
+    var durees = [15, 30, 45, 60, 90, 120].concat((BO.ref("motifs") || []).map(function (m) { return +m.duree; }), [dur])
+      .filter(function (x, i, a) { return x > 0 && a.indexOf(x) === i; }).sort(function (a, b) { return a - b; });
+    var m = BO.modal({
+      title: "Déplacer le rendez-vous",
+      wide: true,
+      noFocus: true,
+      body: '<div class="mv-sum">' + BO.thumb(r.vehiculePhoto, "mv-img") + '<div class="grow"><strong>' + esc(r.motifLabel + " · " + r.vehicule) + "</strong>" +
+          "<small>" + esc([r.client || "Sans client", r.clientTelephone].filter(Boolean).join(" · ")) + "</small>" +
+          '<small>Actuellement : <b>' + esc(capital(fmt.dateLong(r.debut))) + " à " + fmt.time(r.debut) + "</b> (" + dur + " min)</small></div></div>" +
+        '<div class="mv-week"><button type="button" class="pl-step__btn" data-mv-week="-1" title="Semaine précédente" aria-label="Semaine précédente">' + icon("chevron-left") + "</button>" +
+          '<div class="mv-days" data-mv-days></div>' +
+          '<button type="button" class="pl-step__btn" data-mv-week="1" title="Semaine suivante" aria-label="Semaine suivante">' + icon("chevron-right") + "</button></div>" +
+        '<div class="mv-opts"><label class="inline-field">Durée <select class="select" data-mv-duree>' + durees.map(function (x) { return '<option value="' + x + '"' + (x === dur ? " selected" : "") + ">" + x + " min</option>"; }).join("") + "</select></label>" +
+          '<label class="inline-field">Ou autre heure <input class="input" type="time" step="300" data-mv-heure></label></div>' +
+        '<div class="slots" data-mv-slots></div><p class="alert" data-mv-error hidden></p>',
+      actions: [{ label: "Annuler" }, { label: "Choisissez un créneau", primary: true, icon: "check", onClick: valider }],
+    });
+    var body = m.body, okBtn = $(".modal__foot .btn--primary", m.el);
+
+    function chosen() {
+      var h = $("[data-mv-heure]", body).value;
+      return h ? sel.date + " " + h : sel.slot;
+    }
+    function refreshBtn() {
+      var c = chosen();
+      okBtn.disabled = !c || c === cur && dur === dureeOf(r);
+      okBtn.lastChild.textContent = c ? "Déplacer au " + capital(fmt.dateLong(c)).replace(/^(\S+)/, function (w) { return w.slice(0, 3) + "."; }) + " à " + fmt.time(c) : "Choisissez un créneau";
+    }
+    function error(msg) { var e = $("[data-mv-error]", body); e.textContent = msg || ""; e.hidden = !msg; }
+    function renderDays() {
+      var today = BO.isoDate(new Date());
+      $("[data-mv-days]", body).innerHTML = Array.from({ length: 7 }, function (_, i) {
+        var d = BO.addDays(sel.week, i), iso = BO.isoDate(d);
+        return '<button type="button" class="mv-day' + (iso === sel.date ? " is-sel" : "") + (iso === today ? " is-today" : "") + (iso === r.debut.slice(0, 10) ? " is-current" : "") + (!openings(d).length ? " is-closed" : "") + '" data-mv-day="' + iso + '">' +
+          "<span>" + JOURS[d.getDay()] + "</span><strong>" + d.getDate() + "</strong><small>" + d.toLocaleDateString("fr-FR", { month: "short" }) + "</small></button>";
+      }).join("");
+    }
+    function loadSlots() {
+      var box = $("[data-mv-slots]", body);
+      box.innerHTML = '<p class="muted">Recherche des créneaux libres…</p>';
+      BO.api("admin/rendez-vous/creneaux", { query: { vehicule: r.vehiculeId, date: sel.date, motif: r.motif, duree: dur, exclure: r.id } }).then(function (res) {
+        if (!res.creneaux.length) { box.innerHTML = '<p class="muted">Le garage est fermé ce jour-là : choisissez un autre jour, ou indiquez une autre heure.</p>'; return; }
+        var libres = res.creneaux.filter(function (s) { return s.libre; }).length;
+        box.innerHTML = '<p class="slots-title">' + esc(capital(fmt.dateLong(sel.date))) + " · créneaux de " + res.duree + " min · " + fmt.plural(libres, "libre") + "</p>" +
+          '<div class="slot-grid">' + res.creneaux.map(function (s) {
+            var k = s.debut.slice(0, 16), isCur = k === cur;
+            return '<button type="button" class="slot' + (s.libre ? "" : " is-busy") + (sel.slot === k ? " is-selected" : "") + (isCur ? " is-current" : "") + '" ' + (s.libre ? 'data-mv-slot="' + k + '"' : "disabled") +
+              ' title="' + (isCur ? "Horaire actuel" : s.libre ? "Libre" : s.passe ? "Passé" : "Occupé") + '">' + fmt.time(s.debut) + "</button>";
+          }).join("") + "</div>";
+      }).catch(function (e) { box.innerHTML = '<p class="alert">' + esc(e.message) + "</p>"; });
+    }
+    function valider() {
+      var c = chosen();
+      if (!c) { error("Choisissez un créneau libre ou indiquez une heure."); return true; }
+      error("");
+      return BO.api("admin/rendez-vous/modifier", { body: { id: r.id, debut: c, duree: dur } }).then(function (res) {
+        BO.toast("Rendez-vous déplacé au " + fmt.dateLong(c) + " à " + fmt.time(c));
+        if (res.avertissements && res.avertissements.length) setTimeout(function () { BO.toast(res.avertissements.join(" ")); }, 1800);
+        BO.refreshCounts();
+        if (reload) reload();
+        setTimeout(function () { BO.proposeMessage(res.proposition); }, 0);
+      }).catch(function (e) {
+        error(e.message);
+        if (e.status === 409) { sel.slot = null; loadSlots(); refreshBtn(); }
+        return true;
+      });
+    }
+    body.addEventListener("click", function (e) {
+      var w = e.target.closest("[data-mv-week]"), d = e.target.closest("[data-mv-day]"), s = e.target.closest("[data-mv-slot]");
+      if (w) { sel.week = BO.addDays(sel.week, 7 * +w.getAttribute("data-mv-week")); renderDays(); return; }
+      if (d) { sel.date = d.getAttribute("data-mv-day"); sel.slot = null; error(""); renderDays(); loadSlots(); refreshBtn(); return; }
+      if (s) {
+        sel.slot = s.getAttribute("data-mv-slot");
+        $("[data-mv-heure]", body).value = "";
+        $$(".slot", body).forEach(function (x) { x.classList.toggle("is-selected", x === s); });
+        error(""); refreshBtn();
+      }
+    });
+    body.addEventListener("change", function (e) {
+      if (e.target.matches("[data-mv-duree]")) { dur = +e.target.value; sel.slot = null; loadSlots(); refreshBtn(); }
+      if (e.target.matches("[data-mv-heure]")) { if (e.target.value) { sel.slot = null; $$(".slot.is-selected", body).forEach(function (x) { x.classList.remove("is-selected"); }); } refreshBtn(); }
+    });
+    body.addEventListener("input", function (e) { if (e.target.matches("[data-mv-heure]")) refreshBtn(); });
+    renderDays();
+    loadSlots();
+    refreshBtn();
+  }
+  BO.moveRdv = moveDialog;
+
   /* ---------------------------------------------------------------- prise de rendez-vous (appel téléphonique) */
   BO.route(/^\/planning\/nouveau$/, function (view, _p, q) { return rdvForm(view, null, q); }, { nav: "planning", title: "Nouveau rendez-vous", perm: "rdv.gerer" });
   BO.route(/^\/planning\/(\d+)\/modifier$/, function (view, p) {
@@ -561,7 +749,8 @@
 
   function rdvForm(view, existing, q) {
     var st = {
-      vehicule: null, client: null, nouveauClient: false, slot: existing ? existing.debut : null,
+      // Heure cliquée dans le calendrier : présélectionne le créneau correspondant
+      vehicule: null, client: null, nouveauClient: false, slot: existing ? existing.debut : q.heure && /^\d{2}:\d{2}$/.test(q.heure) ? (q.date || BO.isoDate(new Date())) + " " + q.heure + ":00" : null,
       date: existing ? existing.debut.slice(0, 10) : q.date || BO.isoDate(new Date()),
       motif: existing ? existing.motif : q.motif || "visite",
     };
@@ -590,7 +779,7 @@
           BO.f.input("date", "Date", st.date, 'type="date"') +
         "</div>" +
         '<div class="slots" data-slots><p class="muted">Choisissez d\'abord le véhicule pour voir ses créneaux.</p></div>' +
-        '<div class="form-grid"><label class="field">Ou heure précise<input class="input" type="time" name="heure" step="300" value="' + esc(existing ? existing.debut.slice(11, 16) : q.heure || "") + '"></label></div>' +
+        '<div class="form-grid"><label class="field">Ou autre heure <small>exception, hors créneaux</small><input class="input" type="time" name="heure" step="300" value="' + esc(existing ? existing.debut.slice(11, 16) : "") + '"></label></div>' +
       "</div></section>" +
       '<section class="card"><div class="card__head"><h2><span class="step">4</span>Détails</h2></div><div class="card__body form-grid">' +
         BO.f.select("statut", "Statut", { confirme: "Confirmé", en_attente: "En attente de confirmation" }, existing ? existing.statut : "confirme") +
@@ -670,7 +859,13 @@
       box.innerHTML = '<p class="muted">Recherche des créneaux…</p>';
       BO.api("admin/rendez-vous/creneaux", { query: { vehicule: st.vehicule.dbId, date: form.date.value, motif: form.motif.value, duree: form.duree.value, exclure: existing ? existing.id : "" } }).then(function (r) {
         var res = r.reservations.filter(function (x) { return !existing || x.id !== existing.id; });
-        box.innerHTML = (r.creneaux.length ? '<p class="slots-title">Créneaux du ' + esc(fmt.dateLong(form.date.value)) + " (" + r.duree + " min) :</p>" +
+        // Créneau présélectionné (clic dans le calendrier) mais pas libre pour ce véhicule / cette durée
+        var warn = "";
+        if (st.slot && !(existing && st.slot === existing.debut) && !r.creneaux.some(function (s) { return s.libre && s.debut.slice(0, 16) === st.slot.slice(0, 16); })) {
+          warn = '<p class="note note--warn">' + icon("info") + "<span>" + fmt.time(st.slot) + " n'est pas un créneau libre de " + r.duree + " min pour ce véhicule : choisissez un créneau ci-dessous.</span></p>";
+          st.slot = null;
+        }
+        box.innerHTML = warn + (r.creneaux.length ? '<p class="slots-title">Créneaux libres du ' + esc(fmt.dateLong(form.date.value)) + " (rendez-vous de " + r.duree + " min) :</p>" +
           '<div class="slot-grid">' + r.creneaux.map(function (s) {
             var sel = st.slot && st.slot.slice(0, 16) === s.debut.slice(0, 16);
             return '<button type="button" class="slot' + (s.libre ? "" : " is-busy") + (sel ? " is-selected" : "") + '" ' + (s.libre ? 'data-pick-slot="' + s.debut + '"' : "disabled") + ' title="' + (s.libre ? "Libre" : s.passe ? "Passé" : "Occupé") + '">' + fmt.time(s.debut) + "</button>";

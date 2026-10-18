@@ -332,8 +332,9 @@ final class Appointments
         $busy = array_filter($rdvs, fn($r) => in_array($r['statut'], ['en_attente', 'confirme'], true) && (int) $r['id'] !== $exclude);
         $slots = [];
         $now = Db::now();
+        // Créneaux de la durée du rendez-vous, alignés sur l'ouverture (visite de 30 min : 8h00, 8h30, 9h00…)
         foreach ((array) (Settings::get('horaires')[(string) date('w', strtotime($date))] ?? []) as [$a, $b]) {
-            for ($t = strtotime("$date $a:00"); $t + $duree * 60 <= strtotime("$date $b:00"); $t += 15 * 60) {
+            for ($t = strtotime("$date $a:00"); $t + $duree * 60 <= strtotime("$date $b:00"); $t += $duree * 60) {
                 $s = date('Y-m-d H:i:s', $t);
                 $e = date('Y-m-d H:i:s', $t + $duree * 60);
                 $libre = $s >= $now;
@@ -346,7 +347,7 @@ final class Appointments
             }
         }
         return [
-            'duree' => $duree, 'creneaux' => $slots,
+            'duree' => $duree, 'pas' => $duree, 'creneaux' => $slots,
             'reservations' => array_map(fn($r) => ['id' => (int) $r['id'], 'debut' => $r['start_at'], 'fin' => $r['end_at'], 'statut' => $r['statut'],
                 'statutLabel' => self::STATUTS[$r['statut']] ?? $r['statut'], 'motif' => Settings::motif($r['motif'])['libelle'] ?? $r['motif']], $rdvs),
         ];

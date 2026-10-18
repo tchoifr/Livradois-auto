@@ -122,6 +122,10 @@ ok((await call("admin/rendez-vous", { token: SN, body: { vehiculeId: v3.dbId, cl
 const slots = (await call("admin/rendez-vous/creneaux", { token: SN, query: { vehicule: v1.dbId, date: d3.slice(0, 10), motif: "visite" } })).data;
 const s10 = slots.creneaux.find((s) => s.debut.slice(11, 16) === "10:00"), s1130 = slots.creneaux.find((s) => s.debut.slice(11, 16) === "11:30");
 ok(s10 && !s10.libre && s1130 && s1130.libre, "créneaux : occupés et libres correctement affichés");
+const pasVisite = slots.creneaux.slice(1).every((s, i) => s.debut.slice(0, 10) !== slots.creneaux[i].debut.slice(0, 10) || new Date(s.debut.replace(" ", "T")) - new Date(slots.creneaux[i].debut.replace(" ", "T")) >= 30 * 60000);
+const essai = (await call("admin/rendez-vous/creneaux", { token: SN, query: { vehicule: v1.dbId, date: d3.slice(0, 10), motif: "visite", duree: 45 } })).data;
+ok(pasVisite && !slots.creneaux.some((s) => s.debut.slice(14, 16) === "15") && essai.creneaux.slice(0, 3).map((s) => s.debut.slice(11, 16)).join(",") === "08:00,08:45,09:30",
+  "créneaux proposés selon la durée du rendez-vous (30 min : 8h00, 8h30… ; 45 min : 8h00, 8h45, 9h30)", essai.creneaux.slice(0, 4).map((s) => s.debut.slice(11, 16)));
 
 section("4. Annulation, déplacement et rappels");
 res = await call("admin/rendez-vous/annuler", { token: SN, body: { id: R2.id, raison: "Client indisponible" } });
