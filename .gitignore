@@ -18,3 +18,6 @@ backoffice/uploads/vehicules/*
 # Documents de travail (ne pas publier : dépôt public)
 *.docx
 *.pdf
+
+# Images d'origine (lourdes) : le site utilise les versions WebP
+public/assets/garage-de-luxe-*.png

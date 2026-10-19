@@ -30,8 +30,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=mvorange1">
-  <link rel="preload" as="image" href="public/assets/headerAudi.webp" fetchpriority="high">
+  <link rel="stylesheet" href="styles.css?v=mvorange2">
+  <link rel="preload" as="image" href="public/assets/garage-de-luxe-mobile.webp" media="(max-width: 680px)" fetchpriority="high">
+  <link rel="preload" as="image" href="public/assets/garage-de-luxe-tablette.webp" media="(min-width: 681px) and (max-width: 1100px)" fetchpriority="high">
+  <link rel="preload" as="image" href="public/assets/garage-de-luxe-desktop.webp" imagesrcset="public/assets/garage-de-luxe-desktop-1280.webp 1280w, public/assets/garage-de-luxe-desktop.webp 1983w" imagesizes="100vw" media="(min-width: 1101px)" fetchpriority="high">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":["AutoRepair","AutoDealer"],"name":"Livradois Automobiles","image":"https://livradois-automobiles.netlify.app/public/assets/fondwhy.webp","logo":"https://livradois-automobiles.netlify.app/public/assets/logo-livradois-automobiles.webp","url":"https://livradois-automobiles.netlify.app/","telephone":"+33473958546","email":"livradois.automobiles@gmail.com","address":{"@type":"PostalAddress","streetAddress":"60 route Nationale","postalCode":"63220","addressLocality":"Arlanc","addressRegion":"Auvergne-Rhône-Alpes","addressCountry":"FR"},"geo":{"@type":"GeoCoordinates","latitude":45.4185184,"longitude":3.7242512},"openingHoursSpecification":[{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday"],"opens":"08:00","closes":"12:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday"],"opens":"14:00","closes":"18:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Saturday","opens":"08:00","closes":"12:00"}]}</script>
 </head>
 
@@ -80,7 +82,7 @@
 
   <main id="contenu">
     <section class="hero">
-      <div class="hero__media"><img src="public/assets/headerAudi.webp" alt="" width="1900" height="1068" fetchpriority="high"></div>
+      <div class="hero__media"><picture><source media="(max-width: 680px)" srcset="public/assets/garage-de-luxe-mobile.webp" width="940" height="1672"><source media="(max-width: 1100px)" srcset="public/assets/garage-de-luxe-tablette.webp" width="1254" height="1254"><img src="public/assets/garage-de-luxe-desktop.webp" srcset="public/assets/garage-de-luxe-desktop-1280.webp 1280w, public/assets/garage-de-luxe-desktop.webp 1983w" sizes="100vw" alt="" width="1983" height="793" fetchpriority="high"></picture></div>
       <div class="container">
         <div class="hero__content">
           <span class="hero__pill"><b>Arlanc</b>Garage partenaire Eurorepar · Puy-de-Dôme</span>
@@ -513,10 +515,10 @@
 
   <div class="toast" role="status" aria-live="polite" data-toast></div>
 
-  <script src="js/config.js?v=mvorange1" defer></script>
-  <script src="script.js?v=mvorange1" defer></script>
-  <script src="js/vehicules-data.js?v=mvorange1" defer></script>
-  <script src="js/accueil.js?v=mvorange1" defer></script>
+  <script src="js/config.js?v=mvorange2" defer></script>
+  <script src="script.js?v=mvorange2" defer></script>
+  <script src="js/vehicules-data.js?v=mvorange2" defer></script>
+  <script src="js/accueil.js?v=mvorange2" defer></script>
 </body>
 
 </html>

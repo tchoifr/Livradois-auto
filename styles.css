@@ -157,7 +157,8 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
 /* ---------- Hero (accueil) ---------- */
 .hero { position: relative; isolation: isolate; color: #fff; min-height: min(86vh, 780px); display: flex; align-items: center; overflow: hidden; background: var(--ink-900); }
 .hero__media { position: absolute; inset: 0; z-index: -2; }
-.hero__media img { width: 100%; height: 100%; object-fit: cover; object-position: 70% center; animation: heroZoom 18s var(--ease) both; }
+.hero__media picture { display: block; width: 100%; height: 100%; }
+.hero__media img { width: 100%; height: 100%; object-fit: cover; object-position: 60% 70%; animation: heroZoom 18s var(--ease) both; }
 .hero::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(17, 19, 23, .92) 0%, rgba(17, 19, 23, .72) 42%, rgba(17, 19, 23, .15) 78%), linear-gradient(0deg, rgba(17, 19, 23, .65) 0%, rgba(17, 19, 23, 0) 40%); }
 .hero__content { padding-block: 72px 140px; max-width: 680px; }
 .hero__pill { display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18); font-size: 14px; font-weight: 600; backdrop-filter: blur(8px); }
@@ -645,6 +646,9 @@ a.info-card:hover { border-color: var(--ink-900); }
   .header__actions .btn--primary span { display: none; }
   .header__actions .btn--primary { width: 44px; padding: 0; min-height: 44px; }
   .hero { min-height: auto; }
+  /* Téléphone : texte sur toute la largeur, voile plus uniforme pour rester lisible sur les lumières de l'atelier */
+  .hero::before { background: linear-gradient(180deg, rgba(17, 19, 23, .62) 0%, rgba(17, 19, 23, .8) 40%, rgba(17, 19, 23, .72) 75%, rgba(17, 19, 23, .45) 100%); }
+  .hero__media img { object-position: center bottom; }
   .hero__content { padding-block: 56px 120px; }
   .hero__actions .btn { flex: 1 1 100%; }
   .quick-search__card { grid-template-columns: 1fr; padding: 20px; }
