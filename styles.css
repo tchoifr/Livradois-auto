@@ -17,12 +17,12 @@
   --sand: #c5ab77;
   --sand-200: #eee4d0;
   --sand-100: #f6f1e7;
-  --brand: #0f6b78;
-  --brand-light: #5cb9c5; /* bleu pétrole éclairci, pour les fonds sombres */
-  --brand-btn: #0f6b78;
-  --brand-btn-hover: #0b5661;
-  --brand-50: #e8f3f5;
-  --brand-100: #cde6ea;
+  --brand: #fb4c02; /* orange du logo */
+  --brand-light: #ff7a3d; /* orange éclairci, pour les fonds sombres */
+  --brand-btn: #d63f00; /* orange foncé : texte blanc lisible (4,6:1) */
+  --brand-btn-hover: #b83600;
+  --brand-50: #fff1ea;
+  --brand-100: #ffe0d1;
   --success: #1c7c45;
   --success-50: #e6f5ec;
   --warning: #9a5b00;
@@ -102,7 +102,7 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
 }
 .btn:hover { transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
-.btn--primary { --btn-bg: var(--brand-btn); box-shadow: 0 8px 20px -8px rgba(15, 107, 120, .45); }
+.btn--primary { --btn-bg: var(--brand-btn); box-shadow: 0 8px 20px -8px rgba(214, 63, 0, .45); }
 .btn--primary:hover { --btn-bg: var(--brand-btn-hover); }
 .btn--dark:hover { --btn-bg: var(--ink-700); }
 .btn--ghost { --btn-bg: transparent; --btn-fg: var(--text); --btn-bd: var(--line-strong); }
@@ -292,7 +292,7 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
 .steps-foot { display: flex; justify-content: center; margin-top: 40px; }
 
 /* ---------- Bandeau CTA ---------- */
-.cta-band { position: relative; overflow: hidden; display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; align-items: center; padding: clamp(32px, 5vw, 56px); border-radius: var(--radius-lg); background: linear-gradient(120deg, var(--brand-btn) 0%, #1b8a99 100%); color: #fff; }
+.cta-band { position: relative; overflow: hidden; display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; align-items: center; padding: clamp(32px, 5vw, 56px); border-radius: var(--radius-lg); background: linear-gradient(120deg, var(--brand-btn) 0%, #ff6a1f 100%); color: #fff; }
 .cta-band::after { content: ""; position: absolute; right: -80px; top: -80px; width: 320px; height: 320px; border-radius: 50%; border: 50px solid rgba(255, 255, 255, .08); }
 .cta-band h2 { font-size: clamp(26px, 3.4vw, 38px); }
 .cta-band p { margin-top: 12px; color: rgba(255, 255, 255, .88); max-width: 560px; }
@@ -360,7 +360,7 @@ a.info-card:hover { border-color: var(--ink-900); }
 
 /* ---------- En-tête des pages internes ---------- */
 .page-hero { position: relative; overflow: hidden; background: var(--ink-900); color: #fff; padding-block: 56px 64px; isolation: isolate; }
-.page-hero::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(600px 300px at 85% 0%, rgba(46, 150, 165, .40), transparent 70%), radial-gradient(500px 260px at 0% 100%, rgba(197, 171, 119, .22), transparent 70%); }
+.page-hero::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(600px 300px at 85% 0%, rgba(255, 75, 0, .35), transparent 70%), radial-gradient(500px 260px at 0% 100%, rgba(197, 171, 119, .22), transparent 70%); }
 .page-hero h1 { font-size: clamp(32px, 4.6vw, 52px); margin-top: 14px; }
 .page-hero p { color: rgba(255, 255, 255, .72); margin-top: 12px; max-width: 640px; font-size: 17px; }
 .breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; color: rgba(255, 255, 255, .6); }
