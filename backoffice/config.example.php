@@ -32,4 +32,9 @@ return [
     // Clé demandée par setup.php pour créer le premier compte (32 caractères aléatoires minimum).
     // À vider une fois le compte créé.
     'setup_key' => 'CHANGER_MOI_AVEC_UNE_LONGUE_CLE_ALEATOIRE',
+
+    // Facultatif : clé de chiffrement des accès aux plateformes de diffusion (32 octets en base64,
+    // ex. base64_encode(random_bytes(32))). Sans elle, la clé est dérivée des accès à la base.
+    // Ne plus la changer une fois des accès enregistrés (il faudrait les ressaisir).
+    // 'diffusion_key' => '',
 ];

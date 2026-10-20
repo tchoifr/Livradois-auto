@@ -27,6 +27,7 @@ $admin = [
     // Tableau de bord, recherche, références
     'GET admin/stats' => [null, function ($u) {
         Notifications::processDue(5, 4);
+        Diffusion::traiter(3, 3);
         return Requests::stats($u);
     }],
     'GET admin/tableau' => [null, fn($u, $in) => Dashboard::tableau($u, $in)],
@@ -87,6 +88,21 @@ $admin = [
     'GET admin/preparation' => ['vehicules.preparer', fn($u, $in) => Checklist::board($u, $in)],
     'GET admin/checklist/taches' =>[null, fn() => array_map(fn($i) => ['id' => (int) $i['id'], 'code' => $i['code'], 'libelle' => $i['libelle'], 'categorie' => $i['categorie'], 'obligatoire' => (int) $i['obligatoire'] === 1, 'actif' => (int) $i['actif'] === 1], Checklist::items(true))],
     'POST admin/checklist/tache' => ['parametres.gerer', fn($u, $in) => Checklist::saveItem($u, $in)],
+
+    // Diffusion multicanale (site, Leboncoin, La Centrale…)
+    'GET admin/diffusion' => ['diffusion.voir', fn($u, $in) => Diffusion::overview($u, $in)],
+    'GET admin/diffusion/vehicule' => ['diffusion.voir', fn($u, $in) => Diffusion::vehicule($u, (int) ($in['id'] ?? 0))],
+    'POST admin/diffusion/publier' => ['diffusion.publier', fn($u, $in) => Diffusion::publier($u, $in)],
+    'POST admin/diffusion/manuel' => ['diffusion.publier', fn($u, $in) => Diffusion::manuel($u, $in)],
+    'POST admin/diffusion/retirer' => ['diffusion.publier', fn($u, $in) => Diffusion::retirer($u, $in)],
+    'POST admin/diffusion/synchroniser' => ['diffusion.publier', fn($u, $in) => Diffusion::synchroniser($u, $in)],
+    'POST admin/diffusion/adaptation' => ['diffusion.publier', fn($u, $in) => Diffusion::adaptation($u, $in)],
+    'GET admin/diffusion/historique' => ['diffusion.voir', fn($u, $in) => Diffusion::historique($u, $in)],
+    'GET admin/diffusion/comptes' => ['diffusion.voir', fn($u) => ['plateformes' => ComptesDiffusion::list($u), 'autres' => Diffusion::canauxAutres($u)]],
+    'POST admin/diffusion/compte' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::save($u, $in)],
+    'POST admin/diffusion/compte/tester' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::tester($u, (int) ($in['canalId'] ?? 0))],
+    'POST admin/diffusion/compte/deconnecter' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::deconnecter($u, (int) ($in['canalId'] ?? 0))],
+    'POST admin/diffusion/canal' => ['diffusion.comptes', fn($u, $in) => Diffusion::saveCanal($u, $in)],
 
     // Parcs et comptes
     'GET admin/parcs' => [null, fn($u, $in) => Parcs::list($u, !empty($in['tous']) && Access::can($u, 'parcs.gerer'))],
@@ -183,7 +199,7 @@ try {
         if (strlen($key) < 24 || !hash_equals($key, (string) ($_SERVER['HTTP_X_CRON_KEY'] ?? ''))) {
             Http::fail(404, 'Route inconnue.');
         }
-        Http::json(Notifications::processDue(50, 25));
+        Http::json(Notifications::processDue(50, 25) + ['diffusion' => Diffusion::traiter(20, 20)]);
         exit;
     }
 

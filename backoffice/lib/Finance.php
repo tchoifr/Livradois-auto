@@ -228,6 +228,7 @@ final class Finance
                 }
                 Db::update('la_vehicules', $upd, $vid);
                 Audit::log($user, 'vehicule.statut', 'vehicule', $vid, ['statut' => $veh['statut']], ['statut' => $target, 'via' => 'vente']);
+                Diffusion::vehiculeChange($user, $vid, $veh['statut']);
             }
             if ($clientId && (!$before || $before['statut'] !== $statut)) {
                 Clients::history($user, $clientId, $statut === 'livree' ? 'livraison' : 'vente', self::VENTE_STATUTS[$statut] . ' — ' . $veh['marque'] . ' ' . $veh['modele'], ['vehicule_id' => $vid]);

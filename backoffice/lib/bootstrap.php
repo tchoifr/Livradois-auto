@@ -72,4 +72,6 @@ require __DIR__ . '/Finance.php';
 require __DIR__ . '/Dashboard.php';
 require __DIR__ . '/Requests.php';
 require __DIR__ . '/Uploads.php';
+require __DIR__ . '/ComptesDiffusion.php';
+require __DIR__ . '/Diffusion.php';
 require __DIR__ . '/Demo.php';

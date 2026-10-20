@@ -19,7 +19,8 @@ documents, vérification administrative, « prêt pour les rendez-vous ») ; con
 échéance vérifiée sur le procès-verbal, alertes) ; documents privés ; clients et historique de contact ;
 demandes du site rattachées aux fiches clients avec validation humaine ; messages (confirmation, rappels
 24 h / 2 h, modification, annulation) avec file d'envoi, nouvelles tentatives et relance manuelle ; ventes,
-paiements, coûts et marge de gestion estimée, rapports et export CSV ; journal d'audit.
+paiements, coûts et marge de gestion estimée, rapports et export CSV ; diffusion des annonces (site, Leboncoin,
+La Centrale) ; journal d'audit.
 
 **Aucune double réservation** : chaque création ou déplacement de rendez-vous est vérifié par le serveur dans une
 transaction, le véhicule verrouillé (intervalle `[début, fin[`). En cas de conflit, l'API répond `409` avec les
@@ -31,7 +32,10 @@ rendez-vous en cause.
 | --- | :-: | :-: | :-: |
 | Planning, clients, messages, demandes, préparation, CT, documents | ✓ | ✓ | ✓ |
 | Annonces, photos, statut, transfert entre parcs | ✓ | ✓ | |
+| Diffusion : consulter l'état des annonces | ✓ | ✓ | ✓ |
+| Diffusion : publier, mettre à jour, retirer, adapter | ✓ | ✓ | |
 | Ventes, paiements, finances, rapports | ✓ | | |
+| Comptes de diffusion (abonnements, accès API) | ✓ | | |
 | Parcs, comptes, paramètres, journal, suppression, export / anonymisation client | ✓ | | |
 
 Les secrétaires ne voient que les parcs qui leur sont affectés (**Équipe & accès**). Un compte nominatif par
@@ -44,7 +48,7 @@ personne : chaque action est tracée au nom de son auteur.
 | `api.php` | API : annonces publiques, demandes/offres, routes du dashboard |
 | `lib/` | Code PHP (inaccessible depuis le web) |
 | `setup.php` | Migrations versionnées ; création du premier compte ; `--demo-db` reconstruit la démonstration |
-| `bin/worker.php` | Envoi des messages dus (rappels, nouvelles tentatives) — à lancer par une tâche planifiée |
+| `bin/worker.php` | Envoi des messages dus et opérations de diffusion en attente — à lancer par une tâche planifiée |
 | `bin/backup.php` | Sauvegarde SQL compressée (30 conservées) |
 | `settings.php` | Réglages non secrets versionnés (vide) ; `settings.local.php` est écrit par le déploiement |
 | `uploads/vehicules/` | Photos des annonces (publiques) |
@@ -68,6 +72,35 @@ adresse, avec le destinataire prévu dans l'objet (`[TEST → client@…]`).
 - SMS : aucun prestataire configuré ; les clients qui préfèrent le SMS reçoivent un e-mail s'ils l'acceptent.
 - Rappels automatiques : ils partent dès qu'une page du dashboard est ouverte. Pour qu'ils partent aussi la nuit
   et le week-end, créer une tâche planifiée OVH (toutes les 15 min) lançant `bin/worker.php` du dossier de l'API.
+
+## Diffusion des annonces
+
+La fiche du véhicule reste la référence ; chaque canal (site, Leboncoin, La Centrale, autres sites ajoutés) a sa
+propre publication : statut, lien, référence, expiration, prix publié, adaptation du titre / texte / photos (sans
+modifier la fiche), historique horodaté avec son auteur.
+
+- **Site du garage** : publication directe (statut « en ligne » du véhicule).
+- **Leboncoin, La Centrale** : **publication assistée**. Aucune de ces plateformes ne propose d'API publique de
+  publication ; la diffusion automatique est réservée aux professionnels abonnés, avec des accès et une
+  documentation remis par la plateforme. Le dashboard prépare l'annonce (texte et photos à copier, lien de dépôt),
+  l'utilisateur publie sur la plateforme puis enregistre le lien : rien n'est affiché « publié » sans cette
+  confirmation.
+- **Synchronisation** : prix, texte ou photos modifiés → annonces « à mettre à jour » ; véhicule vendu, livré ou
+  retiré → « à retirer » (vente annulée → conservées) ; parution dépassée → « à renouveler ». Ces actions
+  apparaissent dans **À faire** du tableau de bord et dans **Diffusion**.
+- **Comptes de diffusion** (propriétaire) : abonnement déclaré (offre, date de fin) et accès API remis par la
+  plateforme (OAuth 2.0 identifiant / secret client, ou clé d'API). Jamais le mot de passe du compte. Les accès
+  sont chiffrés sur le serveur (AES-256-GCM, ou XChaCha20-Poly1305 si openssl est absent ; clé `diffusion_key`
+  facultative, sinon dérivée des accès à la base) et ne sont jamais renvoyés au navigateur. « Tester la connexion »
+  fait un vrai appel, uniquement si l'abonnement est actif, uniquement en https vers un domaine officiel de la
+  plateforme (adresses internes refusées, pas de redirection).
+- **Publication automatique** : chaque plateforme a un connecteur (`ConnecteurDiffusion` dans
+  `lib/Diffusion.php`) qui déclare ses opérations (publier, modifier, retirer). Les envois passent par une file
+  (`la_diffusion_taches`) : une seule opération par version de l'annonce, nouveaux essais après 5, 15 puis 60 min
+  en cas de panne passagère, statut « erreur » avec le message de la plateforme sinon. Aucun connecteur Leboncoin
+  ou La Centrale n'est livré : il sera écrit à partir de leur documentation officielle quand l'abonnement pro
+  donnera accès à leur API. La plateforme fictive `bac_a_sable` n'existe que pour les tests automatiques
+  (réglage `diffusion_bac_a_sable`, jamais en production).
 
 ## Mise en route (une seule fois)
 

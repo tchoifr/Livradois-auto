@@ -300,6 +300,8 @@ final class Vehicles
             Checklist::ensure($id);
             Audit::log($user, 'vehicule.creer', 'vehicule', $id, null, self::auditable($data + $upd));
         }
+        // Annonces : retrait si vendu, mise à jour si prix / texte / photos modifiés
+        Diffusion::vehiculeChange($user, $id, $existing['statut'] ?? 'brouillon');
         return self::get($user, $id);
     }
 
@@ -343,6 +345,7 @@ final class Vehicles
             }
             Db::update('la_vehicules', $data, $id);
             Audit::log($user, 'vehicule.statut', 'vehicule', $id, ['statut' => $v['statut']], ['statut' => $statut]);
+            Diffusion::vehiculeChange($user, $id, $v['statut']);
             return self::get($user, $id);
         });
     }

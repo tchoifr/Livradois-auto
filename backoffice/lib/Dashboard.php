@@ -225,6 +225,7 @@ final class Dashboard
             'date' => $date, 'horaires' => (array) (Settings::get('horaires')[$jour] ?? []),
             'rendezVous' => $rdv, 'preparation' => ['taches' => $taches, 'ct' => $ct],
             'secretariat' => $secretariat, 'proprietaire' => $proprio,
+            'diffusion' => Diffusion::actions($user, $parc),
         ];
     }
 

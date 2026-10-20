@@ -168,15 +168,35 @@
       });
     }
 
-    // Compteur : rendez-vous encore à venir + tâches non cochées + CT + secrétariat + gestion
+    // Annonces : à retirer (véhicule vendu), à mettre à jour (prix modifié), à renouveler, en erreur — tout le monde, ou la personne qui publie
+    var dif = j.diffusion || { total: 0, items: [] };
+    var voitDiffusion = dif.total > 0 && (!todo.pour || (who && who.role !== "secretaire"));
+    if (voitDiffusion) {
+      var DIF = {
+        a_retirer: ["alert", "td-ico--danger", "Retirer l'annonce", function (x) { return "véhicule " + (x.statutVehicule === "retire" ? "retiré de la vente" : "vendu"); }],
+        a_mettre_a_jour: ["refresh", "td-ico--warn", "Mettre à jour l'annonce", function (x) { return x.prixPublie != null && x.prixPublie !== x.prix ? "prix " + fmt.euros(x.prixPublie) + " → " + fmt.euros(x.prix) : "fiche modifiée"; }],
+        erreur: ["alert", "td-ico--danger", "Annonce en erreur", function (x) { return x.erreur || "à vérifier"; }],
+        expire: ["clock", "td-ico--warn", "Renouveler l'annonce", function () { return "parution terminée"; }],
+      };
+      dif.items.forEach(function (x) {
+        var m = DIF[x.statut] || DIF.erreur;
+        rows.push({ g: "Annonces", html: '<li class="td-row"><span class="td-ico ' + m[1] + '">' + icon(m[0]) + "</span>" +
+          '<div class="td-body"><strong>' + m[2] + " " + esc(x.canal) + "</strong><small>" + esc(x.vehicule + (x.numeroStock ? " · " + x.numeroStock : "") + " · " + m[3](x)) + "</small></div>" +
+          '<a class="td-go" href="#/vehicules/' + x.vehiculeId + '/diffusion" aria-label="Ouvrir la diffusion">' + icon("chevron-right") + "</a></li>" });
+      });
+      if (dif.total > dif.items.length) rows.push({ g: "Annonces", html: '<li class="td-row td-more"><a href="#/diffusion?filtre=traiter">… et ' + (dif.total - dif.items.length) + " autre(s) annonce(s)</a></li>" });
+    }
+
+    // Compteur : rendez-vous encore à venir + tâches non cochées + CT + secrétariat + gestion + annonces
     var restants = rdv.filter(function (r) { return ACTIFS.indexOf(r.statut) !== -1 && !(today && r.fin.slice(11, 16) <= now); }).length +
       taches.filter(function (t) { return t.statut !== "termine"; }).length +
       (voitCt ? j.preparation.ct.length : 0) +
       (voitSecretariat ? s.demandesTotal + s.aConfirmer.length + s.aCloturer.length + s.messagesEchec.length : 0) +
-      (p && voitGestion ? p.livraisons.length + p.reservations.length + p.aEncaisser.nombre + p.aPayer.length : 0);
+      (p && voitGestion ? p.livraisons.length + p.reservations.length + p.aEncaisser.nombre + p.aPayer.length : 0) +
+      (voitDiffusion ? dif.total : 0);
     $("[data-todo-count]", card).textContent = restants || "";
 
-    // Liste repliée : quelques lignes par groupe, pour que chaque partie (préparation, secrétariat, gestion) reste visible
+    // Liste repliée : quelques lignes par groupe, pour que chaque partie (préparation, secrétariat, gestion, annonces) reste visible
     var perGroup = {}, court = rows.filter(function (x) { perGroup[x.g] = (perGroup[x.g] || 0) + 1; return perGroup[x.g] <= LIMITE; });
     var caches = rows.length - court.length, shown = todo.tout ? rows : court, lastG = "";
     var list = shown.map(function (x) { var h = x.g !== lastG ? '<li class="td-group">' + x.g + "</li>" : ""; lastG = x.g; return h + x.html; }).join("");

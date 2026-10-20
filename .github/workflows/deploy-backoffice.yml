@@ -65,6 +65,8 @@ jobs:
               'setup_key' => 'cle-installation-ci-0123456789',
               'private_dir' => '/tmp/livradois-prive',
               'cron_key' => 'cle-cron-ci-0123456789abcdefghij',
+              // Plateforme de test fictive : vérifie la file de diffusion (jamais activée en production)
+              'diffusion_bac_a_sable' => true,
           ];
           PHP
 

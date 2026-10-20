@@ -294,5 +294,140 @@ ok(Array.isArray(demoVeh) && demoVeh.length === 12, "démo : la secrétaire ne v
 ok((await call("admin/vehicules", { token: demoLogin.data.token })).status === 401, "un jeton de démo ne donne aucun accès à la base réelle");
 ok((await call("auth/demo", { body: { role: "admin" } })).status === 404, "connexion sans mot de passe impossible hors démonstration");
 
+// ---------------------------------------------------------------------------------------------
+section("11. Diffusion multicanale (site, Leboncoin, La Centrale)");
+const today = new Date().toISOString().slice(0, 10);
+const descD = "Véhicule de test pour la diffusion multicanale : entretien à jour, carnet complet, deux clés, contrôle technique sans défaut.";
+const photosD = [1, 2, 3, 4, 5].map((i) => ({ url: "/public/vehicules/test-diffusion-" + i + ".webp" }));
+const vD = (await mkVeh(A, nord.id, "Toyota", "Yaris", { statut: "brouillon", description: descD, photos: photosD, miseEnCirculation: "2020-03" })).data;
+const difV = async (token = A) => (await call("admin/diffusion/vehicule", { token, query: { id: vD.dbId } })).data;
+let dif = await difV();
+const cn = (code, d = dif) => d.canaux.find((c) => c.code === code);
+ok(cn("site") && cn("leboncoin") && cn("lacentrale"), "canaux de diffusion : site, Leboncoin, La Centrale");
+ok(cn("leboncoin").mode === "manuel" && cn("lacentrale").mode === "manuel" && cn("leboncoin").raisonManuel.includes("API") && cn("leboncoin").capacites.length === 0,
+  "Leboncoin et La Centrale en publication assistée : aucune publication automatique simulée", cn("leboncoin"));
+ok(cn("site").statut === "non_publie" && cn("leboncoin").donnees.titre.startsWith("Toyota Yaris") && cn("leboncoin").donnees.photos.length === 5, "brouillon non publié ; annonce préparée depuis la fiche (titre, photos)");
+const LBC = cn("leboncoin").canalId, LC = cn("lacentrale").canalId, SITE = cn("site").canalId;
+res = await call("admin/diffusion/publier", { token: A, body: { vehiculeId: vD.dbId, canaux: [SITE, LBC] } });
+const rs = (id) => res.data.resultats.find((r) => r.canalId === id);
+ok(res.status === 200 && rs(SITE).ok && cn("site", res.data.diffusion).statut === "publie", "« Publier » : annonce en ligne sur le site", res.data);
+ok(rs(LBC).ok === false && rs(LBC).manuel === true, "Leboncoin : pas de faux succès, publication assistée proposée");
+ok((await call("vehicules")).data.some((v) => v.id === vD.id), "l'annonce apparaît sur le site public");
+ok((await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "publie", url: "https://www.exemple.com/annonce/1" } })).status === 422, "publication assistée : lien d'un autre site refusé");
+ok((await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "publie", url: "http://www.leboncoin.fr/ad/voitures/1" } })).status === 422, "…lien non https refusé");
+ok((await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "publie" } })).status === 422, "…lien ou référence obligatoire");
+const exp = new Date(Date.now() + 60 * 86400e3).toISOString().slice(0, 10);
+res = await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "publie", url: "https://www.leboncoin.fr/ad/voitures/2999999999", reference: "2999999999", expireLe: exp } });
+ok(res.status === 200 && cn("leboncoin", res.data).statut === "publie" && cn("leboncoin", res.data).url.includes("leboncoin.fr") && cn("leboncoin", res.data).expireLe === exp && cn("leboncoin", res.data).prixPublie === 12500,
+  "publication assistée enregistrée : lien, référence, expiration, prix publié", cn("leboncoin", res.data));
+res = await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LC, action: "publie", reference: "LC-TEST-1" } });
+ok(res.status === 200 && cn("lacentrale", res.data).statut === "publie", "La Centrale : publication assistée enregistrée avec sa référence");
+// Fiche modifiée → annonces à mettre à jour (la fiche reste la référence)
+const fullD = (await call("admin/vehicule", { token: A, query: { id: vD.dbId } })).data;
+await call("admin/vehicule", { token: A, body: { ...fullD, prix: 11900 } });
+dif = await difV();
+ok(cn("leboncoin").statut === "a_mettre_a_jour" && cn("lacentrale").statut === "a_mettre_a_jour" && cn("leboncoin").aJour === false, "prix modifié : annonces Leboncoin et La Centrale « à mettre à jour »");
+ok(dif.historique.some((h) => h.message.includes("12 500 € → 11 900 €")), "historique : ancien et nouveau prix", dif.historique.slice(0, 3));
+const todoD = (await call("admin/journee", { token: A })).data;
+ok(todoD.diffusion?.items?.some((i) => i.vehiculeId === vD.dbId && i.statut === "a_mettre_a_jour"), "« À faire » du tableau de bord : annonce à mettre à jour", todoD.diffusion);
+res = await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "mis_a_jour" } });
+ok(cn("leboncoin", res.data).statut === "publie" && cn("leboncoin", res.data).prixPublie === 11900 && cn("leboncoin", res.data).aJour, "mise à jour confirmée : publiée au nouveau prix");
+// Adaptation propre à une plateforme
+res = await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, titre: "Toyota Yaris hybride — garantie 12 mois", description: descD + " Spécial Leboncoin.", photos: photosD.slice(0, 3).map((p) => p.url) } });
+const adapt = cn("leboncoin", res.data);
+ok(res.status === 200 && adapt.donnees.titre === "Toyota Yaris hybride — garantie 12 mois" && adapt.donnees.titrePerso && adapt.donnees.photos.length === 3 && adapt.statut === "a_mettre_a_jour",
+  "adaptation Leboncoin (titre, description, 3 photos) : à republier", adapt?.donnees);
+const ficheApres = (await call("admin/vehicule", { token: A, query: { id: vD.dbId } })).data;
+ok(ficheApres.description === descD && ficheApres.photos.length === 5 && cn("lacentrale", res.data).donnees.titre.startsWith("Toyota Yaris Test"), "la fiche du véhicule et les autres plateformes ne sont pas modifiées");
+await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "mis_a_jour" } });
+// Expiration
+fixture("publication-expiree", vD.dbId, LBC);
+dif = await difV();
+ok(cn("leboncoin").statut === "expire", "annonce arrivée à expiration : « à renouveler »");
+res = await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "renouvele", expireLe: exp } });
+ok(cn("leboncoin", res.data).statut === "publie", "renouvellement enregistré");
+ok((await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LC, action: "refuse" } })).status === 422, "refus d'une plateforme : motif obligatoire");
+// Droits
+ok((await call("admin/diffusion/vehicule", { token: RN, query: { id: vD.dbId } })).status === 200, "la référente du parc consulte la diffusion");
+ok((await call("admin/diffusion/vehicule", { token: RN, query: { id: v3.dbId } })).status === 403, "…mais pas celle d'un autre parc");
+ok((await call("admin/diffusion/compte", { token: RN, body: { canalId: LBC, abonnementActif: true } })).status === 403, "seul le propriétaire gère les comptes de diffusion");
+// Comptes de diffusion : abonnement + accès API chiffrés, test réel uniquement vers la plateforme
+let comptes = (await call("admin/diffusion/comptes", { token: A })).data.plateformes;
+const cLbc = comptes.find((c) => c.code === "leboncoin");
+ok(cLbc && cLbc.statut === "non_connecte" && cLbc.conditions.includes("pro") && cLbc.publicationAuto === false, "compte Leboncoin : non connecté, conditions d'accès affichées");
+ok((await call("admin/diffusion/compte", { token: A, body: { canalId: LBC, methode: "oauth2_client", urlJeton: "https://evil.example.com/oauth/token" } })).status === 422, "adresse d'authentification hors domaine Leboncoin refusée");
+ok((await call("admin/diffusion/compte", { token: A, body: { canalId: LBC, methode: "oauth2_client", urlJeton: "http://api.leboncoin.fr/oauth/token" } })).status === 422, "…adresse non https refusée");
+ok((await call("admin/diffusion/compte", { token: A, body: { canalId: LBC, methode: "oauth2_client", urlJeton: "https://api.leboncoin.fr:8443/oauth/token" } })).status === 422, "…port non standard refusé");
+const secretTest = "secret-test-" + uniq + "-ne-doit-jamais-sortir";
+res = await call("admin/diffusion/compte", { token: A, body: { canalId: LBC, abonnementActif: false, methode: "oauth2_client", urlJeton: "https://api.leboncoin.fr/oauth/token", identifiant: "client-test-" + uniq, secret: secretTest } });
+ok(res.status === 200 && res.data.secretEnregistre === true && !JSON.stringify(res.data).includes(secretTest) && res.data.identifiant !== "client-test-" + uniq, "accès enregistrés : secret jamais renvoyé, identifiant masqué", res);
+const brut = fixture("compte-brut", LBC);
+ok(/^v[12]:/.test(brut.stocke || "") && !brut.stocke.includes(secretTest) && brut.dechiffre === secretTest, "secret chiffré en base (chiffrement authentifié), déchiffrable par le serveur seul", { brut, n: secretTest.length });
+res = await call("admin/diffusion/compte/tester", { token: A, body: { canalId: LBC } });
+ok(res.status === 409 && res.data.error.includes("abonnement"), "test de connexion impossible sans abonnement pro actif", res.data);
+await call("admin/diffusion/compte", { token: A, body: { canalId: LBC, abonnementActif: true, abonnementFin: "2020-01-01" } });
+ok((await call("admin/diffusion/compte/tester", { token: A, body: { canalId: LBC } })).status === 409, "…ni avec un abonnement terminé");
+comptes = (await call("admin/diffusion/comptes", { token: A })).data.plateformes;
+ok(fixture("compte-brut", LBC).dechiffre === secretTest && comptes.find((c) => c.code === "leboncoin").statut === "non_connecte", "abonnement modifié sans retoucher les accès : secret conservé, toujours non connecté");
+const aj = fixture("analyse-jeton");
+ok(aj.ok.ok && aj.ok.jeton === "abc" && aj.ok.expire === 1800 && !aj.refuse.ok && aj.refuse.message.includes("401") && !aj.limite.ok && !aj.injoignable.ok && !aj.sansJeton.ok, "lecture des réponses OAuth 2.0 (accepté, refusé, limite, injoignable)");
+res = await call("admin/diffusion/compte/deconnecter", { token: A, body: { canalId: LBC } });
+ok(res.status === 200 && res.data.secretEnregistre === false && fixture("compte-brut", LBC).stocke === null, "déconnexion : accès effacés du serveur");
+// Vente → retrait des annonces ; vente annulée → annonces conservées
+res = await call("admin/vente", { token: A, body: { vehiculeId: vD.dbId, statut: "finalisee", acheteur: "Acheteur diffusion", prixFinal: "11900", dateVente: today } });
+ok(res.status === 200, "vente finalisée", res.data);
+dif = await difV();
+ok(cn("site").statut === "vendu" && cn("leboncoin").statut === "a_retirer" && cn("lacentrale").statut === "a_retirer", "véhicule vendu : retiré du site, annonces Leboncoin et La Centrale « à retirer »");
+ok(!(await call("vehicules")).data.some((v) => v.id === vD.id), "le véhicule vendu n'est plus sur le site public");
+const ov = (await call("admin/diffusion", { token: A })).data;
+ok(ov.compteurs.aRetirer >= 2 && ov.lignes.some((l) => l.vehiculeId === vD.dbId), "vue d'ensemble : annonces à retirer comptées, véhicule vendu encore listé");
+const venteD = (await call("admin/finance/vehicule", { token: A, query: { id: vD.dbId } })).data.ventes[0];
+await call("admin/vente", { token: A, body: { id: venteD.id, vehiculeId: vD.dbId, statut: "annulee" } });
+dif = await difV();
+ok(cn("site").statut === "publie" && cn("leboncoin").statut === "publie", "vente annulée : annonces conservées (plus rien à retirer)");
+await call("admin/vehicule/statut", { token: A, body: { id: vD.dbId, statut: "retire" } });
+res = await call("admin/diffusion/manuel", { token: A, body: { vehiculeId: vD.dbId, canalId: LBC, action: "retire" } });
+ok(cn("leboncoin", res.data).statut === "retire" && cn("lacentrale", res.data).statut === "a_retirer", "retrait confirmé plateforme par plateforme");
+const histD = (await call("admin/diffusion/historique", { token: A, query: { vehicule: vD.dbId, canal: LBC } })).data;
+ok(histD.length >= 6 && histD.every((h) => h.canal === "Leboncoin") && histD.some((h) => h.action === "manuel_publie" && h.acteur), "historique filtré par véhicule et plateforme (auteur, date, résultat)");
+ok((await call("admin/diffusion/historique", { token: A, query: { vehicule: vD.dbId, resultat: "echec" } })).data.every((h) => h.resultat === "echec"), "historique filtré par résultat");
+// File d'opérations sur la plateforme de test (connecteur automatique, activé uniquement pour les tests)
+const vS = (await mkVeh(A, nord.id, "Skoda", "Fabia", { description: descD, photos: photosD, miseEnCirculation: "2021-05" })).data;
+const difS = async () => (await call("admin/diffusion/vehicule", { token: A, query: { id: vS.dbId } })).data;
+const SB = cn("bac_a_sable", await difS());
+if (!SB) {
+  ok(false, "plateforme de test active (réglage diffusion_bac_a_sable)");
+} else {
+  ok(SB.mode === "auto" && SB.capacites.includes("retirer"), "plateforme de test : publication automatique déclarée (publier, modifier, retirer)");
+  res = await call("admin/diffusion/publier", { token: A, body: { vehiculeId: vS.dbId, canaux: [SB.canalId] } });
+  ok(res.data.resultats[0].ok && cn("bac_a_sable", res.data.diffusion).statut === "publie" && cn("bac_a_sable", res.data.diffusion).reference.startsWith("TEST-"), "publication confirmée par la plateforme : référence enregistrée", res.data.resultats);
+  const fullS = (await call("admin/vehicule", { token: A, query: { id: vS.dbId } })).data;
+  await call("admin/vehicule", { token: A, body: { ...fullS, prix: 9900 } });
+  await call("admin/vehicule", { token: A, body: { ...fullS, prix: 9900 } });
+  let taches = fixture("diffusion-taches", vS.dbId).filter((t) => t.action === "modifier" && t.statut === "en_attente");
+  ok(taches.length === 1 && cn("bac_a_sable", await difS()).statut === "a_mettre_a_jour", "prix modifié : une seule mise à jour en file (pas de doublon), en attente de confirmation", taches);
+  await call("admin/stats", { token: A });
+  let sb = cn("bac_a_sable", await difS());
+  ok(sb.statut === "publie" && sb.prixPublie === 9900, "mise à jour envoyée et confirmée : prix 9 900 €", sb);
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vS.dbId, canalId: SB.canalId, description: descD + " [ECHEC]" } });
+  res = await call("admin/diffusion/synchroniser", { token: A, body: { vehiculeId: vS.dbId, canalId: SB.canalId } });
+  sb = cn("bac_a_sable", res.data);
+  ok(sb.statut === "erreur" && sb.erreur.includes("refusée") && res.data.historique[0].resultat === "echec", "refus de la plateforme : statut « erreur », message clair, jamais affiché comme réussi", sb);
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vS.dbId, canalId: SB.canalId, description: descD + " [TEMPORAIRE]" } });
+  res = await call("admin/diffusion/synchroniser", { token: A, body: { vehiculeId: vS.dbId, canalId: SB.canalId } });
+  taches = fixture("diffusion-taches", vS.dbId).filter((t) => t.statut === "en_attente");
+  ok(taches.length === 1 && taches[0].tentatives === 1 && cn("bac_a_sable", res.data).erreur.includes("Nouvel essai"), "panne passagère : nouvel essai automatique programmé", taches);
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vS.dbId, canalId: SB.canalId, description: "" } });
+  fixture("diffusion-taches", vS.dbId, "dues");
+  await call("admin/stats", { token: A });
+  sb = cn("bac_a_sable", await difS());
+  ok(sb.statut === "publie" && sb.erreur === "" && sb.tachesEnCours === 0, "nouvel essai réussi : annonce à jour", { sb, t: fixture("diffusion-taches", vS.dbId) });
+  await call("admin/vehicule/statut", { token: A, body: { id: vS.dbId, statut: "retire" } });
+  ok(cn("bac_a_sable", await difS()).statut === "a_retirer", "véhicule retiré de la vente : retrait demandé à la plateforme");
+  const cron = await call("cron/notifications", { headers: { "X-Cron-Key": process.env.CRON_KEY || "" } });
+  sb = cn("bac_a_sable", await difS());
+  ok(cron.status === 200 && sb.statut === "retire", "tâche planifiée : retrait confirmé par la plateforme", cron.data);
+}
+
 console.log(`\n${passes} réussis, ${failures} échoués`);
 process.exit(failures ? 1 : 0);

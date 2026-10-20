@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 final class Demo
 {
-    private const VERSION = 2;
+    private const VERSION = 3;
     private const TTL = 86400;
 
     public static function ensure(bool $force = false): void
@@ -145,6 +145,23 @@ final class Demo
                 'created_at' => date('Y-m-d H:i:s', strtotime('-' . ($n * 7 + 1) . ' hours')), 'updated_at' => $now,
             ]);
         }
+
+        // Diffusion : annonces publiées en mode assisté (références fictives, aucun lien inventé vers une plateforme)
+        $lbc = (int) Db::value("SELECT id FROM la_canaux WHERE code = 'leboncoin'");
+        $lc = (int) Db::value("SELECT id FROM la_canaux WHERE code = 'lacentrale'");
+        $publie = fn(int $k, int $canal, string $ref, int $jours) => Diffusion::manuel($admin, ['vehiculeId' => $byIndex[$k], 'canalId' => $canal, 'action' => 'publie',
+            'reference' => $ref, 'expireLe' => date('Y-m-d', strtotime("+$jours days"))]);
+        foreach ([0, 1, 2, 4, 6, 12, 15] as $n => $k) {
+            $publie($k, $lbc, 'DEMO-LBC-' . ($n + 1), 20 + $n * 7);
+        }
+        foreach ([0, 3, 6, 15] as $n => $k) {
+            $publie($k, $lc, 'DEMO-LC-' . ($n + 1), 30);
+        }
+        // Prix baissé après publication : annonces à mettre à jour ; parution terminée : à renouveler ; refus d'une plateforme
+        Db::update('la_vehicules', ['prix' => (int) Db::value('SELECT prix FROM la_vehicules WHERE id = ?', [$byIndex[1]]) - 500, 'updated_at' => $now], $byIndex[1]);
+        Diffusion::vehiculeChange($admin, $byIndex[1]);
+        Db::exec('UPDATE la_publications SET expire_le = ? WHERE vehicule_id = ? AND canal_id = ?', [date('Y-m-d', strtotime('-1 day')), $byIndex[2], $lbc]);
+        Diffusion::manuel($admin, ['vehiculeId' => $byIndex[3], 'canalId' => $lbc, 'action' => 'refuse', 'motif' => 'Photo principale refusée (plaque lisible) — exemple de démonstration']);
 
         // Finance et ventes : achats, frais, une vente finalisée avec solde à recevoir, une réservation avec acompte
         foreach ($byIndex as $k => $vid) {

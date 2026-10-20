@@ -20,10 +20,11 @@ final class Access
         'referent' => [
             'vehicules.voir', 'vehicules.modifier', 'vehicules.statut', 'vehicules.transferer', 'vehicules.preparer',
             'photos.gerer', 'documents.gerer', 'rdv.gerer', 'clients.gerer', 'messages.envoyer', 'demandes.gerer',
+            'diffusion.voir', 'diffusion.publier',
         ],
         'secretaire' => [
             'vehicules.voir', 'vehicules.preparer', 'documents.gerer', 'rdv.gerer', 'clients.gerer',
-            'messages.envoyer', 'demandes.gerer',
+            'messages.envoyer', 'demandes.gerer', 'diffusion.voir',
         ],
     ];
 

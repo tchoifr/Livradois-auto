@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /*
- * Envoi des messages dus (rappels de rendez-vous, renvois automatiques).
+ * Envoi des messages dus (rappels de rendez-vous, renvois automatiques) et opérations de diffusion en attente.
  * À lancer par une tâche planifiée OVH (Hébergement → Tâches planifiées - Cron),
  * par exemple toutes les heures : php bin/worker.php
  * Idempotent : un message déjà pris en charge n'est jamais envoyé deux fois.
@@ -16,3 +16,5 @@ require dirname(__DIR__) . '/lib/bootstrap.php';
 
 $r = Notifications::processDue(100, 50);
 echo date('Y-m-d H:i:s') . " — envoyés : {$r['envoyes']}, échecs : {$r['echecs']}, annulés : {$r['annules']}\n";
+$d = Diffusion::traiter(50, 50);
+echo date('Y-m-d H:i:s') . " — diffusion : {$d['traitees']} opération(s) traitée(s)\n";

@@ -201,6 +201,7 @@ final class Requests
             'rdvAujourdhui' => $count("SELECT COUNT(*) FROM la_rendez_vous r WHERE r.statut IN ('en_attente', 'confirme') AND r.start_at >= ? AND r.start_at < ?" . Access::scope($user, 'r.parc_id')[0],
                 array_merge([date('Y-m-d 00:00:00'), date('Y-m-d 00:00:00', strtotime('+1 day'))], Access::scope($user, 'r.parc_id')[1])),
             'messagesEchec' => Notifications::stats($user)['echecs'],
+            'diffusionActions' => Diffusion::actions($user, null, 0)['total'],
         ];
     }
 }

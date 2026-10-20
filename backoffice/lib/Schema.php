@@ -274,12 +274,90 @@ final class Schema
             updated_at DATETIME NOT NULL',
     ];
 
+    /**
+     * v4 : diffusion multicanale. Une publication par véhicule et par canal (statut propre à chaque plateforme),
+     * comptes de diffusion (accès chiffrés), file de tâches pour les connecteurs API, historique des opérations.
+     */
+    private const V4 = [
+        'la_canaux' => '
+            id {ID},
+            code VARCHAR(40) NOT NULL UNIQUE,
+            nom VARCHAR(80) NOT NULL,
+            type VARCHAR(20) NOT NULL,
+            url_depot VARCHAR(255) NOT NULL DEFAULT \'\',
+            actif SMALLINT NOT NULL DEFAULT 1,
+            ordre SMALLINT NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL',
+        'la_comptes_diffusion' => '
+            id {ID},
+            canal_id INT NOT NULL UNIQUE,
+            abonnement_actif SMALLINT NOT NULL DEFAULT 0,
+            abonnement_offre VARCHAR(120) NOT NULL DEFAULT \'\',
+            abonnement_fin DATE NULL,
+            methode VARCHAR(20) NOT NULL DEFAULT \'\',
+            url_jeton VARCHAR(255) NOT NULL DEFAULT \'\',
+            url_test VARCHAR(255) NOT NULL DEFAULT \'\',
+            entete_cle VARCHAR(40) NOT NULL DEFAULT \'\',
+            identifiant VARCHAR(190) NOT NULL DEFAULT \'\',
+            secret_chiffre TEXT NULL,
+            jeton_chiffre TEXT NULL,
+            jeton_expire_le DATETIME NULL,
+            statut VARCHAR(20) NOT NULL DEFAULT \'non_connecte\',
+            dernier_test_le DATETIME NULL,
+            dernier_message VARCHAR(500) NOT NULL DEFAULT \'\',
+            connecte_par INT NULL,
+            connecte_le DATETIME NULL,
+            updated_at DATETIME NOT NULL',
+        'la_publications' => '
+            id {ID},
+            vehicule_id INT NOT NULL,
+            canal_id INT NOT NULL,
+            mode VARCHAR(10) NOT NULL DEFAULT \'manuel\',
+            statut VARCHAR(20) NOT NULL DEFAULT \'non_publie\',
+            reference_externe VARCHAR(120) NOT NULL DEFAULT \'\',
+            url VARCHAR(500) NOT NULL DEFAULT \'\',
+            titre_perso VARCHAR(160) NULL,
+            description_perso TEXT NULL,
+            photos_perso TEXT NULL,
+            empreinte CHAR(40) NOT NULL DEFAULT \'\',
+            prix_publie INT NULL,
+            publie_le DATETIME NULL,
+            expire_le DATE NULL,
+            derniere_synchro DATETIME NULL,
+            derniere_erreur VARCHAR(500) NOT NULL DEFAULT \'\',
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL{UNQ:uq_publication:vehicule_id, canal_id}{IDX:idx_publication_statut:statut}',
+        'la_diffusion_taches' => '
+            id {ID},
+            publication_id INT NOT NULL,
+            action VARCHAR(20) NOT NULL,
+            statut VARCHAR(20) NOT NULL DEFAULT \'en_attente\',
+            claim VARCHAR(40) NOT NULL DEFAULT \'\',
+            tentatives SMALLINT NOT NULL DEFAULT 0,
+            prochaine_tentative DATETIME NULL,
+            derniere_erreur VARCHAR(500) NOT NULL DEFAULT \'\',
+            dedupe_key VARCHAR(160) NULL UNIQUE,
+            acteur_id INT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL{IDX:idx_diffusion_taches:statut, prochaine_tentative}',
+        'la_diffusion_historique' => '
+            id {ID},
+            vehicule_id INT NULL,
+            canal_id INT NULL,
+            publication_id INT NULL,
+            action VARCHAR(40) NOT NULL,
+            resultat VARCHAR(10) NOT NULL,
+            message VARCHAR(500) NOT NULL DEFAULT \'\',
+            acteur_id INT NULL,
+            created_at DATETIME NOT NULL{IDX:idx_diffusion_hist_vehicule:vehicule_id}{IDX:idx_diffusion_hist_date:created_at}',
+    ];
+
     public static function migrate(): array
     {
         self::createTables(['la_migrations' => "version INT NOT NULL PRIMARY KEY,\n applied_at DATETIME NOT NULL"]);
         $done = array_map('intval', array_column(Db::all('SELECT version FROM la_migrations'), 'version'));
         $applied = [];
-        foreach ([1, 2, 3] as $v) {
+        foreach ([1, 2, 3, 4] as $v) {
             if (in_array($v, $done, true)) {
                 continue;
             }
@@ -351,6 +429,21 @@ final class Schema
             $slugs = array_column(json_decode((string) file_get_contents($seed), true) ?: [], 'id');
             if ($slugs) {
                 Db::exec('UPDATE la_vehicules SET demo = 1 WHERE slug IN (' . Db::in($slugs) . ')', $slugs);
+            }
+        }
+    }
+
+    private static function v4(): void
+    {
+        self::createTables(self::V4);
+        $now = Db::now();
+        foreach ([
+            ['site', 'Site du garage', 'site', '', 0],
+            ['leboncoin', 'Leboncoin', 'plateforme', 'https://www.leboncoin.fr/deposer-une-annonce', 1],
+            ['lacentrale', 'La Centrale', 'plateforme', 'https://www.lacentrale.fr', 2],
+        ] as [$code, $nom, $type, $url, $ordre]) {
+            if (!Db::value('SELECT COUNT(*) FROM la_canaux WHERE code = ?', [$code])) {
+                Db::insert('la_canaux', ['code' => $code, 'nom' => $nom, 'type' => $type, 'url_depot' => $url, 'actif' => 1, 'ordre' => $ordre, 'created_at' => $now]);
             }
         }
     }

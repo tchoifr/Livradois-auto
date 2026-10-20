@@ -86,7 +86,7 @@
 
   /* ---------------------------------------------------------------- fiche */
   var TABS = [
-    ["fiche", "Fiche & annonce", null], ["preparation", "Préparation & CT", null], ["documents", "Documents", null],
+    ["fiche", "Fiche & annonce", null], ["diffusion", "Diffusion", "diffusion.voir"], ["preparation", "Préparation & CT", null], ["documents", "Documents", null],
     ["planning", "Planning", "rdv.gerer"], ["finance", "Vente & finance", "finance.voir"], ["historique", "Historique", null],
   ];
 
@@ -124,7 +124,7 @@
       var tr = $("[data-transfert]", view);
       if (tr) tr.addEventListener("click", function () { transfer(v); });
       var box = $("[data-tab]", view);
-      var fn = { fiche: BO.can("vehicules.modifier") ? function () { return editor(box, v); } : function () { return readonly(box, v); }, preparation: prepTab, documents: docsTab, planning: planningTab, finance: financeTab, historique: historyTab }[tab] || prepTab;
+      var fn = { fiche: BO.can("vehicules.modifier") ? function () { return editor(box, v); } : function () { return readonly(box, v); }, diffusion: BO.diffusionTab, preparation: prepTab, documents: docsTab, planning: planningTab, finance: financeTab, historique: historyTab }[tab] || prepTab;
       return fn(box, v);
     });
   }, { nav: "vehicules", title: "Véhicule", perm: "vehicules.voir" });
