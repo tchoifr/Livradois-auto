@@ -357,7 +357,7 @@ final class Schema
         self::createTables(['la_migrations' => "version INT NOT NULL PRIMARY KEY,\n applied_at DATETIME NOT NULL"]);
         $done = array_map('intval', array_column(Db::all('SELECT version FROM la_migrations'), 'version'));
         $applied = [];
-        foreach ([1, 2, 3, 4] as $v) {
+        foreach ([1, 2, 3, 4, 5] as $v) {
             if (in_array($v, $done, true)) {
                 continue;
             }
@@ -446,6 +446,26 @@ final class Schema
                 Db::insert('la_canaux', ['code' => $code, 'nom' => $nom, 'type' => $type, 'url_depot' => $url, 'actif' => 1, 'ordre' => $ordre, 'created_at' => $now]);
             }
         }
+    }
+
+    /** Publication en 1 clic : API de publication de chaque plateforme (configurée d'après sa documentation) et type d'erreur. */
+    private static function v5(): void
+    {
+        foreach ([
+            'api_actif' => 'SMALLINT NOT NULL DEFAULT 0',
+            'api_methode_creation' => "VARCHAR(10) NOT NULL DEFAULT 'POST'",
+            'api_url_creation' => "VARCHAR(255) NOT NULL DEFAULT ''",
+            'api_methode_modification' => "VARCHAR(10) NOT NULL DEFAULT 'PUT'",
+            'api_url_modification' => "VARCHAR(255) NOT NULL DEFAULT ''",
+            'api_methode_retrait' => "VARCHAR(10) NOT NULL DEFAULT 'DELETE'",
+            'api_url_retrait' => "VARCHAR(255) NOT NULL DEFAULT ''",
+            'api_chemin_reference' => "VARCHAR(80) NOT NULL DEFAULT 'id'",
+            'api_chemin_url' => "VARCHAR(80) NOT NULL DEFAULT ''",
+            'api_modele' => 'TEXT NULL',
+        ] as $col => $def) {
+            self::addColumn('la_comptes_diffusion', $col, $def);
+        }
+        self::addColumn('la_publications', 'erreur_type', "VARCHAR(20) NOT NULL DEFAULT ''");
     }
 
     public static function hasAdmin(): bool

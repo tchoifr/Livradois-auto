@@ -55,6 +55,32 @@ switch ($cmd) {
             'sansJeton' => ComptesDiffusion::analyserJeton(200, '{"foo":1}'),
         ]);
         break;
+    case 'analyse-reponse':
+        // Lecture des réponses d'une plateforme à une publication (sans appel réseau)
+        $a = fn($action, $status, $body) => Diffusion::analyserReponse($action, $status, $body, 'data.id', 'data.url', 'La Centrale');
+        echo json_encode([
+            'cree' => $a('publier', 201, '{"data":{"id":12345,"url":"https://www.lacentrale.fr/auto-occasion-annonce-12345.html"}}'),
+            'sansRef' => $a('publier', 200, '{"status":"ok"}'),
+            'refus' => $a('publier', 422, '{"errors":{"mileage":["doit être positif"],"photos":["au moins 3 photos"]}}'),
+            'abonnement' => $a('publier', 402, '{"error":"payment_required"}'),
+            'abonnement403' => $a('publier', 403, '{"message":"Your subscription plan does not include API publishing"}'),
+            'quota' => $a('publier', 403, '{"message":"Quota d\'annonces atteint pour votre pack"}'),
+            'droits' => $a('publier', 403, '{"message":"Forbidden"}'),
+            'connexion' => $a('modifier', 401, ''),
+            'limite' => $a('modifier', 429, ''),
+            'panne' => $a('publier', 503, ''),
+            'injoignable' => $a('publier', 0, ''),
+            'dejaRetiree' => $a('retirer', 404, ''),
+            'introuvable' => $a('modifier', 404, ''),
+            'modele' => [
+                'ok' => Diffusion::erreurModele('{"title": {{titre}}, "price": {{prix}}, "photos": {{photos}}}'),
+                'guillemets' => Diffusion::erreurModele('{"title": "{{titre}}"}'),
+                'inconnue' => Diffusion::erreurModele('{"title": {{intitule}}}'),
+                'json' => Diffusion::erreurModele('{"title": {{titre}},}'),
+                'corps' => Diffusion::corps('{"t": {{titre}}, "p": {{prix}}, "f": {{photos}}}', ['titre' => 'Clio "RS"', 'prix' => 9900, 'photos' => ['https://x.fr/1.webp']]),
+            ],
+        ]);
+        break;
     case 'diffusion-taches':
         // File d'opérations d'un véhicule ; « dues » avance les nouveaux essais pour les exécuter tout de suite
         if (($argv[3] ?? '') === 'dues') {

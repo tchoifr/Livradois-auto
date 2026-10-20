@@ -94,6 +94,17 @@ modifier la fiche), historique horodaté avec son auteur.
   facultative, sinon dérivée des accès à la base) et ne sont jamais renvoyés au navigateur. « Tester la connexion »
   fait un vrai appel, uniquement si l'abonnement est actif, uniquement en https vers un domaine officiel de la
   plateforme (adresses internes refusées, pas de redirection).
+- **Publication en 1 clic** : bouton « Publier » dans chaque case du tableau **Diffusion** et sur la fiche. Pour
+  Leboncoin / La Centrale, il ne fonctionne que si les trois étapes sont remplies, dans cet ordre : abonnement pro
+  actif → compte connecté (test réussi) → API de publication renseignée d'après la documentation remise avec
+  l'abonnement (adresse et méthode de création / modification / retrait, modèle JSON de l'annonce avec des
+  variables `{{titre}}`, `{{prix}}`, `{{photos}}`…, chemin de la référence dans la réponse ; « Aperçu de l'envoi »
+  montre le JSON sans rien envoyer). Sinon une fenêtre indique l'étape manquante et propose la publication assistée.
+- **Réponses des plateformes** : création confirmée seulement avec une référence d'annonce ; refus (400 / 422,
+  motif affiché, annonce « Refusée ») ; offre payante requise (402, ou 403 mentionnant l'abonnement) ; limite de
+  l'offre atteinte (quota) ; accès expirés (401 : jeton renouvelé une fois, puis compte à reconnecter) ; trop de
+  demandes ou panne (429, 5xx : nouvel essai automatique). Chaque cas a son message et son action (voir les offres,
+  reconnecter, adapter l'annonce, réessayer) et apparaît dans **À faire**.
 - **Publication automatique** : chaque plateforme a un connecteur (`ConnecteurDiffusion` dans
   `lib/Diffusion.php`) qui déclare ses opérations (publier, modifier, retirer). Les envois passent par une file
   (`la_diffusion_taches`) : une seule opération par version de l'annonce, nouveaux essais après 5, 15 puis 60 min

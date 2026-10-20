@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 /**
  * Connecteur technique d'une plateforme. Chaque connecteur déclare explicitement les opérations qu'il sait faire :
- * le dashboard n'affiche que celles-là. Aucun connecteur de publication Leboncoin / La Centrale n'est fourni tant que
- * leur documentation officielle (remise avec l'abonnement pro) n'est pas disponible : ces plateformes restent en
- * publication assistée, sans rien simuler.
+ * le dashboard n'affiche que celles-là. Pour Leboncoin / La Centrale, le connecteur « API » n'existe que lorsque le
+ * propriétaire a renseigné l'API de publication remise avec son abonnement pro (adresses + modèle d'annonce) :
+ * sans cela, publication assistée, sans rien simuler.
  */
 interface ConnecteurDiffusion
 {
@@ -14,12 +14,16 @@ interface ConnecteurDiffusion
 
     /**
      * Exécute une opération et renvoie ['ok' => bool, 'message' => string, 'reference' => ?string, 'url' => ?string,
-     * 'temporaire' => bool (erreur passagère : nouvel essai automatique)].
+     * 'temporaire' => bool (erreur passagère : nouvel essai automatique),
+     * 'type' => refus | abonnement | quota | connexion | droits | introuvable | limite | configuration | technique].
      */
     public function executer(string $action, array $publication, array $donnees, ?array $compte): array;
 }
 
-/** Plateforme de test (bac à sable) : activée seulement par le réglage « diffusion_bac_a_sable » des tests automatiques. */
+/**
+ * Plateforme de test (bac à sable) : activée seulement par le réglage « diffusion_bac_a_sable » des tests automatiques.
+ * Elle simule les réponses HTTP d'une plateforme, lues par le même analyseur que les vraies.
+ */
 final class ConnecteurBacASable implements ConnecteurDiffusion
 {
     public function capacites(): array
@@ -29,14 +33,84 @@ final class ConnecteurBacASable implements ConnecteurDiffusion
 
     public function executer(string $action, array $publication, array $donnees, ?array $compte): array
     {
-        if (str_contains($donnees['description'], '[ECHEC]')) {
-            return ['ok' => false, 'temporaire' => false, 'message' => 'Annonce refusée par la plateforme de test : description non conforme.'];
-        }
-        if (str_contains($donnees['description'], '[TEMPORAIRE]')) {
-            return ['ok' => false, 'temporaire' => true, 'message' => 'Plateforme de test momentanément indisponible.'];
-        }
+        $d = $donnees['description'];
         $ref = $publication['reference_externe'] ?: 'TEST-' . $publication['vehicule_id'] . '-' . $publication['canal_id'];
-        return ['ok' => true, 'reference' => $ref, 'url' => '', 'message' => ['publier' => 'Annonce créée', 'modifier' => 'Annonce mise à jour', 'retirer' => 'Annonce retirée'][$action] . ' sur la plateforme de test.'];
+        [$status, $body] = match (true) {
+            str_contains($d, '[ECHEC]') => [422, '{"message":"Description non conforme"}'],
+            str_contains($d, '[TEMPORAIRE]') => [503, ''],
+            str_contains($d, '[ABONNEMENT]') => [402, '{"error":"subscription_required","message":"Offre pro requise pour publier"}'],
+            str_contains($d, '[QUOTA]') => [403, '{"message":"Quota d\'annonces atteint pour votre offre"}'],
+            default => [$action === 'retirer' ? 204 : 200, json_encode(['id' => $ref])],
+        };
+        return Diffusion::analyserReponse($action, $status, $body, 'id', '', 'Plateforme de test');
+    }
+}
+
+/**
+ * Publication par l'API d'une plateforme, configurée d'après sa documentation officielle : adresse et méthode de
+ * chaque opération, modèle JSON de l'annonce ({{variables}}), chemin de la référence dans la réponse.
+ * Appels limités aux domaines officiels de la plateforme, avec les accès du compte connecté.
+ */
+final class ConnecteurApi implements ConnecteurDiffusion
+{
+    public function __construct(private array $canal, private array $config)
+    {
+    }
+
+    public function capacites(): array
+    {
+        $c = $this->config;
+        return array_keys(array_filter(['publier' => $c['api_url_creation'], 'modifier' => $c['api_url_modification'], 'retirer' => $c['api_url_retrait']], fn($u) => $u !== ''));
+    }
+
+    public function executer(string $action, array $publication, array $donnees, ?array $compte): array
+    {
+        $c = $this->config;
+        $nom = $this->canal['nom'];
+        $ko = fn(string $type, string $m) => ['ok' => false, 'temporaire' => false, 'type' => $type, 'message' => $m];
+        [$methode, $url] = [
+            'publier' => [$c['api_methode_creation'], $c['api_url_creation']],
+            'modifier' => [$c['api_methode_modification'], $c['api_url_modification']],
+            'retirer' => [$c['api_methode_retrait'], $c['api_url_retrait']],
+        ][$action];
+        if (str_contains($url, '{reference}')) {
+            if ((string) $publication['reference_externe'] === '') {
+                return $ko('introuvable', 'Référence de l\'annonce ' . $nom . ' inconnue : opération automatique impossible.');
+            }
+            $url = str_replace('{reference}', rawurlencode((string) $publication['reference_externe']), $url);
+        }
+        $corps = null;
+        if ($action !== 'retirer') {
+            $corps = Diffusion::corps((string) $c['api_modele'], $donnees['variables'] ?? []);
+            if ($corps === null) {
+                return $ko('configuration', 'Modèle d\'annonce ' . $nom . ' invalide : vérifiez la publication en 1 clic dans « Comptes de diffusion ».');
+            }
+        }
+        try {
+            ComptesDiffusion::verifierUrl($url, $this->canal, 'Adresse de publication', true);
+            $status = 0;
+            $body = '';
+            for ($essai = 0; $essai < 2; $essai++) {
+                $jeton = ComptesDiffusion::jeton((int) $this->canal['id'], $essai > 0);
+                if ($jeton === null) {
+                    return $ko('connexion', 'Accès à ' . $nom . ' refusés ou expirés : reconnectez le compte dans « Comptes de diffusion ».');
+                }
+                $headers = ['Accept: application/json', $c['methode'] === 'cle_api' && $c['entete_cle'] === 'x-api-key' ? 'X-API-Key: ' . $jeton : 'Authorization: Bearer ' . $jeton];
+                if ($corps !== null) {
+                    $headers[] = 'Content-Type: application/json';
+                }
+                [$status, $body] = ComptesDiffusion::requete($methode, $url, $headers, $corps);
+                // Jeton OAuth expiré entre-temps : un seul renouvellement puis nouvel essai
+                if ($status !== 401 || $c['methode'] !== 'oauth2_client') {
+                    break;
+                }
+            }
+        } catch (HttpError $e) {
+            return $ko('configuration', $e->getMessage());
+        } catch (RuntimeException $e) {
+            return ['ok' => false, 'temporaire' => true, 'type' => 'technique', 'message' => $nom . ' : ' . $e->getMessage()];
+        }
+        return Diffusion::analyserReponse($action, $status, $body, (string) $c['api_chemin_reference'], (string) $c['api_chemin_url'], $nom);
     }
 }
 
@@ -48,6 +122,12 @@ final class Diffusion
         'erreur' => 'Erreur', 'suspendu' => 'Suspendu', 'expire' => 'Expiré — à renouveler', 'refuse' => 'Refusé',
         'a_retirer' => 'À retirer', 'retire' => 'Retiré', 'vendu' => 'Vendu',
     ];
+    /** Variables utilisables dans le modèle d'annonce envoyé à une plateforme. */
+    public const VARIABLES = [
+        'titre', 'description', 'prix', 'marque', 'modele', 'version', 'annee', 'miseEnCirculation', 'km', 'energie', 'boite',
+        'carrosserie', 'puissance', 'cv', 'couleur', 'portes', 'places', 'critair', 'garantie', 'premiereMain', 'equipements',
+        'photos', 'reference', 'immatriculation', 'vin', 'telephone',
+    ];
     /** Annonce présente sur la plateforme (à retirer si le véhicule est vendu). */
     private const EN_LIGNE = ['publie', 'a_mettre_a_jour', 'expire', 'suspendu', 'en_attente'];
     private const BACKOFF = [5, 15, 60];
@@ -57,10 +137,18 @@ final class Diffusion
 
     public static function connecteur(string $code): ?ConnecteurDiffusion
     {
-        if ($code === 'bac_a_sable' && cfg('diffusion_bac_a_sable')) {
-            return new ConnecteurBacASable();
+        if ($code === 'bac_a_sable') {
+            return cfg('diffusion_bac_a_sable') ? new ConnecteurBacASable() : null;
         }
-        return null;
+        if (!isset(ComptesDiffusion::PLATEFORMES[$code])) {
+            return null;
+        }
+        $row = Db::one('SELECT a.* FROM la_comptes_diffusion a JOIN la_canaux c ON c.id = a.canal_id WHERE c.code = ?', [$code]);
+        if (!$row || (int) $row['api_actif'] !== 1 || $row['api_url_creation'] === '' || trim((string) $row['api_modele']) === '') {
+            return null;
+        }
+        $canal = Db::one('SELECT * FROM la_canaux WHERE code = ?', [$code]);
+        return new ConnecteurApi($canal, $row);
     }
 
     public static function canaux(): array
@@ -82,26 +170,223 @@ final class Diffusion
         Http::fail(404, 'Canal de diffusion inconnu.');
     }
 
-    /** Publication automatique possible : connecteur réel + compte connecté avec abonnement valide. */
-    public static function autoDisponible(array $canal): bool
+    /**
+     * Publication en 1 clic : prête, ou première étape manquante, dans l'ordre exigé par les plateformes :
+     * abonnement pro → compte connecté → API de publication renseignée.
+     */
+    public static function autoEtat(array $canal): array
     {
+        $nom = $canal['nom'];
+        if ($canal['type'] === 'site' || ($canal['code'] === 'bac_a_sable' && cfg('diffusion_bac_a_sable'))) {
+            return ['etat' => 'pret', 'message' => '', 'aide' => ''];
+        }
+        $p = ComptesDiffusion::PLATEFORMES[$canal['code']] ?? null;
+        if (!$p) {
+            return ['etat' => 'indisponible', 'message' => 'Publication assistée : cette plateforme n\'a pas d\'intégration automatique.', 'aide' => ''];
+        }
+        $c = Db::one('SELECT * FROM la_comptes_diffusion WHERE canal_id = ?', [(int) $canal['id']]);
+        if (!$c || !ComptesDiffusion::abonnementValide($c)) {
+            return ['etat' => 'abonnement', 'aide' => $p['aide'], 'message' => $nom . ' réserve la publication automatique aux professionnels abonnés'
+                . ($c && (int) $c['abonnement_actif'] === 1 ? ' : votre abonnement est terminé.' : ' : souscrivez une offre pro ' . $nom . ' puis indiquez-la dans « Comptes de diffusion ».')];
+        }
+        if (ComptesDiffusion::statut($c) !== 'connecte') {
+            return ['etat' => 'non_connecte', 'aide' => '', 'message' => 'Compte ' . $nom . ' non connecté' . ($c['statut'] === 'erreur' ? ' (accès refusés)' : '') . ' : connectez-le dans « Comptes de diffusion ».'];
+        }
         $con = self::connecteur($canal['code']);
         if (!$con || !in_array('publier', $con->capacites(), true)) {
-            return false;
+            return ['etat' => 'a_configurer', 'aide' => '', 'message' => 'Compte connecté : renseignez l\'API de publication de ' . $nom . ' (d\'après sa documentation) dans « Comptes de diffusion » pour publier en 1 clic.'];
         }
-        return $canal['code'] === 'bac_a_sable' || ComptesDiffusion::estConnecte((int) $canal['id']);
+        return ['etat' => 'pret', 'message' => '', 'aide' => ''];
+    }
+
+    /** Publication automatique possible : connecteur configuré + abonnement valide + compte connecté. */
+    public static function autoDisponible(array $canal): bool
+    {
+        return $canal['type'] !== 'site' && self::autoEtat($canal)['etat'] === 'pret';
     }
 
     /** Explication affichée quand la publication automatique n'est pas possible (jamais de promesse trompeuse). */
     private static function raisonManuel(array $canal): string
     {
-        if ($canal['type'] === 'autre') {
-            return 'Publication assistée : cette plateforme n\'a pas d\'intégration automatique.';
+        $e = self::autoEtat($canal);
+        return $e['etat'] === 'indisponible' ? $e['message'] : 'Publication assistée en attendant le 1 clic. ' . $e['message'];
+    }
+
+    // ---------------------------------------------------------------- réponses des plateformes
+
+    /**
+     * Lecture de la réponse d'une plateforme à une opération : rien n'est « réussi » sans confirmation explicite
+     * (code 2xx et, pour une création, la référence de l'annonce). Testée unitairement.
+     */
+    public static function analyserReponse(string $action, int $status, string $body, string $cheminRef, string $cheminUrl, string $nom): array
+    {
+        $j = json_decode($body, true);
+        $msg = self::messagePlateforme($j);
+        $detail = $msg !== '' ? ' (« ' . $msg . ' »)' : '';
+        $ko = fn(string $type, string $m, bool $temp = false) => ['ok' => false, 'type' => $type, 'temporaire' => $temp, 'message' => $m];
+        if ($status === 0) {
+            return $ko('technique', ucfirst($nom) . ' injoignable (délai dépassé ou connexion refusée).', true);
         }
-        if (!self::connecteur($canal['code'])) {
-            return 'Publication assistée : ' . $canal['nom'] . ' ne fournit pas d\'API publique de publication. La publication automatique sera ajoutée à partir de la documentation remise avec votre abonnement pro.';
+        if ($status >= 200 && $status < 300) {
+            if ($action !== 'publier') {
+                return ['ok' => true, 'type' => '', 'message' => ($action === 'retirer' ? 'Annonce retirée de ' : 'Annonce mise à jour sur ') . $nom . '.'];
+            }
+            $ref = is_array($j) ? self::chemin($j, $cheminRef !== '' ? $cheminRef : 'id') : null;
+            if ($ref === null || is_array($ref) || (string) $ref === '') {
+                return $ko('technique', ucfirst($nom) . ' a répondu sans référence d\'annonce : publication non confirmée. Vérifiez sur ' . $nom . ' avant de réessayer.');
+            }
+            $url = $cheminUrl !== '' && is_array($j) ? self::chemin($j, $cheminUrl) : null;
+            return ['ok' => true, 'type' => '', 'reference' => (string) $ref, 'url' => is_string($url) && str_starts_with($url, 'https://') ? $url : '',
+                'message' => 'Annonce publiée sur ' . $nom . ' (réf. ' . $ref . ').'];
         }
-        return 'Publication assistée : connectez le compte ' . $canal['nom'] . ' (abonnement actif requis) pour publier automatiquement.';
+        if ($action === 'retirer' && in_array($status, [404, 410], true)) {
+            return ['ok' => true, 'type' => '', 'message' => 'Annonce déjà absente de ' . $nom . '.'];
+        }
+        $texte = mb_strtolower($body);
+        $quota = (bool) preg_match('/quota|limite|limit|crédit|credit|maximum|plafond/u', $texte);
+        $abonnement = (bool) preg_match('/abonnement|subscription|souscri|offre|offer|\bplan\b|\bpack|payment|paiement|billing|upgrade|premium/u', $texte);
+        if (in_array($status, [400, 422], true)) {
+            return $ko('refus', 'Annonce refusée par ' . $nom . ($msg !== '' ? ' : ' . $msg : ' : données non acceptées.'));
+        }
+        if ($status === 413) {
+            return $ko('refus', 'Annonce refusée par ' . $nom . ' : photos ou texte trop volumineux.');
+        }
+        if ($status === 401) {
+            return $ko('connexion', 'Accès refusés par ' . $nom . ' (session expirée ou révoquée) : reconnectez le compte.');
+        }
+        if ($status === 402 || ($status === 403 && ($quota || $abonnement))) {
+            return $quota
+                ? $ko('quota', 'Limite de votre offre ' . $nom . ' atteinte (nombre d\'annonces)' . $detail . ' : retirez une annonce ou passez à une offre supérieure.')
+                : $ko('abonnement', 'Votre abonnement ' . $nom . ' ne permet pas cette publication' . $detail . ' : une offre pro payante est requise.');
+        }
+        if ($status === 403) {
+            return $ko('droits', 'Opération refusée par ' . $nom . ' pour ce compte' . $detail . '.');
+        }
+        if ($status === 404) {
+            return $ko('introuvable', 'Annonce introuvable sur ' . $nom . ' (supprimée ou expirée ?).');
+        }
+        if ($status === 409) {
+            return $ko('refus', 'Conflit signalé par ' . $nom . ($msg !== '' ? ' : ' . $msg : ' : annonce déjà existante ?'));
+        }
+        if ($status === 429) {
+            return $ko('limite', 'Trop de demandes envoyées à ' . $nom . '.', true);
+        }
+        if ($status >= 500) {
+            return $ko('technique', ucfirst($nom) . ' rencontre un problème (HTTP ' . $status . ').', true);
+        }
+        return $ko('technique', 'Réponse inattendue de ' . $nom . ' (HTTP ' . $status . ').');
+    }
+
+    /** Message lisible d'une réponse d'erreur (formats courants : message, detail, errors…). */
+    private static function messagePlateforme($j): string
+    {
+        $net = fn($s) => mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags((string) $s))), 0, 200);
+        if (!is_array($j)) {
+            return '';
+        }
+        foreach (['message', 'error_description', 'detail', 'title'] as $k) {
+            if (!empty($j[$k]) && is_string($j[$k])) {
+                return $net($j[$k]);
+            }
+        }
+        if (isset($j['error']) && is_array($j['error']) && !empty($j['error']['message'])) {
+            return $net($j['error']['message']);
+        }
+        if (!empty($j['errors']) && is_array($j['errors'])) {
+            $parts = [];
+            foreach ($j['errors'] as $k => $e) {
+                if (is_string($e)) {
+                    $parts[] = (is_string($k) ? $k . ' : ' : '') . $e;
+                } elseif (is_array($e) && array_is_list($e) && $e && is_string($e[0])) {
+                    $parts[] = (is_string($k) ? $k . ' : ' : '') . implode(', ', $e);
+                } elseif (is_array($e)) {
+                    $champ = $e['field'] ?? $e['champ'] ?? (is_string($k) ? $k : '');
+                    $parts[] = ($champ !== '' ? $champ . ' : ' : '') . ($e['message'] ?? $e['detail'] ?? '');
+                }
+            }
+            return $net(implode(' ; ', array_filter($parts)));
+        }
+        if (!empty($j['error']) && is_string($j['error'])) {
+            return $net($j['error']);
+        }
+        return '';
+    }
+
+    /** Valeur à un chemin « a.b.0.c » d'une réponse JSON. */
+    private static function chemin(array $j, string $chemin)
+    {
+        $v = $j;
+        foreach (explode('.', $chemin) as $k) {
+            if (!is_array($v) || !array_key_exists($k, $v)) {
+                return null;
+            }
+            $v = $v[$k];
+        }
+        return is_int($v) || is_float($v) ? (string) $v : $v;
+    }
+
+    /** Corps JSON envoyé : modèle de la plateforme, variables remplacées par leur valeur JSON. Null si invalide. */
+    public static function corps(string $modele, array $vars): ?string
+    {
+        if (self::erreurModele($modele) !== '') {
+            return null;
+        }
+        $out = preg_replace_callback('/\{\{\s*([A-Za-z]+)\s*\}\}/', fn($m) => json_encode($vars[$m[1]] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $modele);
+        json_decode((string) $out);
+        return $out !== null && json_last_error() === JSON_ERROR_NONE ? $out : null;
+    }
+
+    /** Contrôle d'un modèle d'annonce : message d'erreur, ou chaîne vide s'il est valide. */
+    public static function erreurModele(string $modele): string
+    {
+        if (trim($modele) === '') {
+            return 'Le modèle d\'annonce est vide.';
+        }
+        if (strlen($modele) > 20000) {
+            return 'Modèle d\'annonce trop long.';
+        }
+        preg_match_all('/\{\{\s*([A-Za-z]+)\s*\}\}/', $modele, $m);
+        $inconnues = array_diff(array_unique($m[1]), self::VARIABLES);
+        if ($inconnues) {
+            return 'Variable inconnue dans le modèle : {{' . implode('}}, {{', $inconnues) . '}}.';
+        }
+        if (preg_match('/"\s*\{\{|\}\}\s*"/', $modele)) {
+            return 'Les variables s\'écrivent sans guillemets, par exemple "title": {{titre}} (la valeur est mise en forme automatiquement).';
+        }
+        $test = preg_replace('/\{\{\s*[A-Za-z]+\s*\}\}/', '"x"', $modele);
+        json_decode((string) $test);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return 'Le modèle d\'annonce n\'est pas un JSON valide (' . json_last_error_msg() . ').';
+        }
+        return '';
+    }
+
+    /** Valeurs des variables du modèle pour un véhicule (photos en adresses complètes, dans l'ordre choisi). */
+    public static function variables(array $v, array $d): array
+    {
+        $site = (string) cfg('site_url', '');
+        $s = parse_url($site) ?: [];
+        $abs = function (array $p) use ($site, $s): string {
+            $u = (string) ($p['url'] ?? '');
+            if ($u === '' && !empty($p['fichier'])) {
+                return rtrim($site, '/') . '/public/assets/vehicules/' . $p['fichier'] . '.webp';
+            }
+            if (str_starts_with($u, '/')) {
+                return ($s['scheme'] ?? 'https') . '://' . ($s['host'] ?? '') . $u;
+            }
+            return $u;
+        };
+        return [
+            'titre' => $d['titre'], 'description' => $d['description'], 'prix' => (int) $v['prix'], 'marque' => $v['marque'], 'modele' => $v['modele'],
+            'version' => $v['version'], 'annee' => (int) $v['annee'], 'miseEnCirculation' => $v['mise_en_circulation'], 'km' => (int) $v['km'],
+            'energie' => $v['energie'], 'boite' => $v['boite'], 'carrosserie' => $v['carrosserie'],
+            'puissance' => $v['puissance'] !== null ? (int) $v['puissance'] : null, 'cv' => $v['cv'] !== null ? (int) $v['cv'] : null, 'couleur' => $v['couleur'],
+            'portes' => $v['portes'] !== null ? (int) $v['portes'] : null, 'places' => $v['places'] !== null ? (int) $v['places'] : null,
+            'critair' => $v['critair'] !== null ? (int) $v['critair'] : null, 'garantie' => (int) $v['garantie'], 'premiereMain' => (int) $v['premiere_main'] === 1,
+            'equipements' => json_decode((string) ($v['equipements'] ?: '[]'), true) ?: [],
+            'photos' => array_values(array_filter(array_map($abs, $d['photos']))), 'reference' => (string) $v['numero_stock'],
+            'immatriculation' => (string) $v['immatriculation'], 'vin' => (string) $v['vin'], 'telephone' => (string) Settings::get('telephone'),
+        ];
     }
 
     // ---------------------------------------------------------------- données d'annonce
@@ -219,17 +504,19 @@ final class Diffusion
         if ($site && $statut === 'suspendu') {
             $label = 'Retiré du site';
         }
-        $auto = $site || self::autoDisponible($canal);
+        $etat = self::autoEtat($canal);
+        $auto = $site || $etat['etat'] === 'pret';
         $pending = $pub ? (int) Db::value("SELECT COUNT(*) FROM la_diffusion_taches WHERE publication_id = ? AND statut IN ('en_attente', 'en_cours')", [(int) $pub['id']]) : 0;
         return [
             'canalId' => (int) $canal['id'], 'code' => $canal['code'], 'nom' => $canal['nom'], 'type' => $canal['type'], 'urlDepot' => $canal['url_depot'],
             'mode' => $site ? 'site' : ($auto ? 'auto' : 'manuel'), 'raisonManuel' => $site || $auto ? '' : self::raisonManuel($canal),
+            'unClic' => $site ? null : $etat, 'aide' => ComptesDiffusion::PLATEFORMES[$canal['code']]['aide'] ?? '',
             'capacites' => $site ? ['publier', 'retirer'] : ($auto ? self::connecteur($canal['code'])->capacites() : []),
             'statut' => $statut, 'statutLabel' => $label,
             'url' => $site ? (in_array($v['statut'], ['disponible', 'reserve'], true) ? rtrim((string) cfg('site_url', ''), '/') . '/vehicule.html?id=' . rawurlencode($v['slug']) : '') : ($pub['url'] ?? ''),
             'reference' => $pub['reference_externe'] ?? '', 'publieLe' => $site ? $v['publie_le'] : ($pub['publie_le'] ?? null),
             'expireLe' => $pub['expire_le'] ?? null, 'derniereSynchro' => $site ? $v['updated_at'] : ($pub['derniere_synchro'] ?? null),
-            'erreur' => $pub['derniere_erreur'] ?? '', 'prixPublie' => isset($pub['prix_publie']) ? (int) $pub['prix_publie'] : null,
+            'erreur' => $pub['derniere_erreur'] ?? '', 'erreurType' => $pub['erreur_type'] ?? '', 'prixPublie' => isset($pub['prix_publie']) ? (int) $pub['prix_publie'] : null,
             'aJour' => $site || !$pub || $pub['empreinte'] === '' || $pub['empreinte'] === self::empreinte($d),
             'tachesEnCours' => $pending,
             'donnees' => $site ? null : $d, 'manquants' => self::manquants($d, $canal),
@@ -275,11 +562,12 @@ final class Diffusion
             foreach ($canaux as $c) {
                 $pub = $pubs[(int) $v['id']][(int) $c['id']] ?? null;
                 $st = $c['type'] === 'site' ? self::siteStatut($v['statut']) : ($pub['statut'] ?? 'non_publie');
-                $cells[] = ['canalId' => (int) $c['id'], 'statut' => $st, 'statutLabel' => $c['type'] === 'site' && $st === 'suspendu' ? 'Retiré du site' : (self::STATUTS[$st] ?? $st)];
+                $cells[] = ['canalId' => (int) $c['id'], 'statut' => $st, 'statutLabel' => $c['type'] === 'site' && $st === 'suspendu' ? 'Retiré du site' : (self::STATUTS[$st] ?? $st),
+                    'erreur' => $pub['derniere_erreur'] ?? '', 'erreurType' => $pub['erreur_type'] ?? ''];
                 if (in_array($st, ['publie', 'a_mettre_a_jour', 'expire'], true)) {
                     $compte['parCanal'][(int) $c['id']] = ($compte['parCanal'][(int) $c['id']] ?? 0) + 1;
                 }
-                $map = ['en_attente' => 'enAttente', 'erreur' => 'erreurs', 'expire' => 'aRenouveler', 'a_retirer' => 'aRetirer', 'a_mettre_a_jour' => 'aMettreAJour'];
+                $map = ['en_attente' => 'enAttente', 'erreur' => 'erreurs', 'refuse' => 'erreurs', 'expire' => 'aRenouveler', 'a_retirer' => 'aRetirer', 'a_mettre_a_jour' => 'aMettreAJour'];
                 if (isset($map[$st])) {
                     $compte[$map[$st]]++;
                 }
@@ -298,7 +586,8 @@ final class Diffusion
         }
         return [
             'canaux' => array_map(fn($c) => ['canalId' => (int) $c['id'], 'code' => $c['code'], 'nom' => $c['nom'], 'type' => $c['type'],
-                'mode' => $c['type'] === 'site' ? 'site' : (self::autoDisponible($c) ? 'auto' : 'manuel')], $canaux),
+                'mode' => $c['type'] === 'site' ? 'site' : (self::autoDisponible($c) ? 'auto' : 'manuel'), 'unClic' => $c['type'] === 'site' ? null : self::autoEtat($c),
+                'aide' => ComptesDiffusion::PLATEFORMES[$c['code']]['aide'] ?? ''], $canaux),
             'compteurs' => $compte, 'lignes' => $lignes,
         ];
     }
@@ -347,7 +636,7 @@ final class Diffusion
         }
         self::rafraichirExpirations();
         [$scope, $p] = Access::scope($user, 'v.parc_id');
-        $where = "pu.statut IN ('a_retirer', 'a_mettre_a_jour', 'erreur', 'expire')" . $scope . ($parc ? ' AND v.parc_id = ?' : '');
+        $where = "pu.statut IN ('a_retirer', 'a_mettre_a_jour', 'erreur', 'refuse', 'expire')" . $scope . ($parc ? ' AND v.parc_id = ?' : '');
         $params = array_merge($p, $parc ? [$parc] : []);
         $total = (int) Db::value("SELECT COUNT(*) FROM la_publications pu JOIN la_vehicules v ON v.id = pu.vehicule_id WHERE $where", $params);
         if ($limite <= 0) {
@@ -355,11 +644,11 @@ final class Diffusion
         }
         $items = array_map(fn($r) => [
             'vehiculeId' => (int) $r['vehicule_id'], 'vehicule' => $r['marque'] . ' ' . $r['modele'], 'numeroStock' => $r['numero_stock'],
-            'canal' => $r['canal_nom'], 'statut' => $r['statut'], 'mode' => $r['mode'], 'erreur' => $r['derniere_erreur'],
+            'canal' => $r['canal_nom'], 'statut' => $r['statut'], 'mode' => $r['mode'], 'erreur' => $r['derniere_erreur'], 'erreurType' => $r['erreur_type'],
             'prixPublie' => $r['prix_publie'] !== null ? (int) $r['prix_publie'] : null, 'prix' => (int) $r['prix'], 'statutVehicule' => $r['vstatut'],
         ], Db::all("SELECT pu.*, v.marque, v.modele, v.numero_stock, v.prix, v.statut AS vstatut, c.nom AS canal_nom FROM la_publications pu
             JOIN la_vehicules v ON v.id = pu.vehicule_id JOIN la_canaux c ON c.id = pu.canal_id WHERE $where
-            ORDER BY CASE pu.statut WHEN 'a_retirer' THEN 0 WHEN 'erreur' THEN 1 WHEN 'a_mettre_a_jour' THEN 2 ELSE 3 END, pu.updated_at LIMIT $limite", $params));
+            ORDER BY CASE pu.statut WHEN 'a_retirer' THEN 0 WHEN 'erreur' THEN 1 WHEN 'refuse' THEN 2 WHEN 'a_mettre_a_jour' THEN 3 ELSE 4 END, pu.updated_at LIMIT $limite", $params));
         return ['total' => $total, 'items' => $items];
     }
 
@@ -417,8 +706,10 @@ final class Diffusion
                 $resultats[] = ['canalId' => $cid, 'ok' => true, 'message' => 'Annonce en ligne sur le site.'];
                 continue;
             }
-            if (!self::autoDisponible($canal)) {
-                $resultats[] = ['canalId' => $cid, 'ok' => false, 'manuel' => true, 'message' => self::raisonManuel($canal)];
+            // 1 clic impossible : on dit pourquoi (abonnement, connexion, configuration) et la publication assistée reste proposée
+            $etat = self::autoEtat($canal);
+            if ($etat['etat'] !== 'pret') {
+                $resultats[] = ['canalId' => $cid, 'ok' => false, 'manuel' => true, 'bloque' => $etat['etat'], 'aide' => $etat['aide'], 'message' => $etat['message']];
                 continue;
             }
             if (!in_array($v['statut'], ['brouillon', 'disponible', 'reserve'], true)) {
@@ -435,11 +726,12 @@ final class Diffusion
                 $resultats[] = ['canalId' => $cid, 'ok' => true, 'message' => 'Déjà publié sur ' . $canal['nom'] . ' (utilisez « Synchroniser » pour envoyer les modifications).'];
                 continue;
             }
-            Db::update('la_publications', ['mode' => 'auto', 'statut' => 'en_attente', 'derniere_erreur' => '', 'updated_at' => Db::now()], (int) $pub['id']);
+            Db::update('la_publications', ['mode' => 'auto', 'statut' => 'en_attente', 'derniere_erreur' => '', 'erreur_type' => '', 'updated_at' => Db::now()], (int) $pub['id']);
             $tache = self::enqueue((int) $pub['id'], 'publier', $user, '');
             self::journal($user, $vid, $cid, (int) $pub['id'], 'publication_demandee', 'info', 'Publication demandée sur ' . $canal['nom'] . ' : en attente de confirmation de la plateforme.');
             $r = $tache ? self::traiterUne($tache) : null;
-            $resultats[] = ['canalId' => $cid, 'ok' => (bool) ($r['ok'] ?? false), 'message' => $r['message'] ?? 'En attente de traitement.'];
+            $resultats[] = ['canalId' => $cid, 'ok' => (bool) ($r['ok'] ?? false), 'message' => $r['message'] ?? 'En attente de traitement.', 'type' => $r['type'] ?? '',
+                'aide' => ComptesDiffusion::PLATEFORMES[$canal['code']]['aide'] ?? ''];
         }
         return ['resultats' => $resultats, 'diffusion' => self::vehicule($user, $vid)];
     }
@@ -515,7 +807,7 @@ final class Diffusion
         $pub = self::publication($vid, (int) $canal['id'], 'manuel');
         $d = self::donnees($v, $canal, $pub);
         $now = Db::now();
-        $data = ['mode' => 'manuel', 'updated_at' => $now];
+        $data = ['mode' => 'manuel', 'erreur_type' => '', 'updated_at' => $now];
         $msg = '';
         switch ($action) {
             case 'publie':
@@ -557,7 +849,7 @@ final class Diffusion
                 if ($m === '') {
                     Http::fail(422, 'Indiquez le motif du refus donné par la plateforme.');
                 }
-                $data += ['statut' => 'refuse', 'derniere_erreur' => $m];
+                $data = ['statut' => 'refuse', 'derniere_erreur' => $m, 'erreur_type' => 'refus'] + $data;
                 $msg = 'Annonce refusée par ' . $canal['nom'] . ' : ' . $m;
                 break;
             case 'retire':
@@ -769,52 +1061,58 @@ final class Diffusion
         $canal = $pub ? Db::one('SELECT * FROM la_canaux WHERE id = ?', [(int) $pub['canal_id']]) : null;
         $v = $pub ? Db::one('SELECT * FROM la_vehicules WHERE id = ?', [(int) $pub['vehicule_id']]) : null;
         $acteur = $t['acteur_id'] ? ['id' => (int) $t['acteur_id']] : null;
-        $fail = function (string $message, bool $temporaire) use ($t, $pub, $canal, $acteur): array {
+        $fail = function (string $message, bool $temporaire, string $type = 'technique') use ($t, $pub, $canal, $acteur): array {
             $tent = (int) $t['tentatives'] + 1;
             if ($temporaire && $tent < self::MAX_TENTATIVES) {
                 $next = date('Y-m-d H:i:s', time() + self::BACKOFF[min($tent - 1, 2)] * 60);
                 Db::exec("UPDATE la_diffusion_taches SET statut = 'en_attente', claim = '', tentatives = ?, prochaine_tentative = ?, derniere_erreur = ?, updated_at = ? WHERE id = ?",
                     [$tent, $next, mb_substr($message, 0, 500), Db::now(), (int) $t['id']]);
                 if ($pub) {
-                    Db::update('la_publications', ['derniere_erreur' => mb_substr($message . ' Nouvel essai à ' . date('H:i', strtotime($next)) . '.', 0, 500), 'updated_at' => Db::now()], (int) $pub['id']);
+                    Db::update('la_publications', ['derniere_erreur' => mb_substr($message . ' Nouvel essai à ' . date('H:i', strtotime($next)) . '.', 0, 500), 'erreur_type' => $type, 'updated_at' => Db::now()], (int) $pub['id']);
                     self::journal($acteur, (int) $pub['vehicule_id'], (int) $pub['canal_id'], (int) $pub['id'], $t['action'], 'echec', ($canal['nom'] ?? '') . ' : ' . $message . ' Nouvel essai automatique à ' . date('H:i', strtotime($next)) . '.');
                 }
-                return ['ok' => false, 'message' => $message . ' Nouvel essai automatique prévu.'];
+                return ['ok' => false, 'type' => $type, 'message' => $message . ' Nouvel essai automatique prévu.'];
             }
             Db::exec("UPDATE la_diffusion_taches SET statut = 'echec', claim = '', tentatives = ?, derniere_erreur = ?, dedupe_key = NULL, updated_at = ? WHERE id = ?",
                 [$tent, mb_substr($message, 0, 500), Db::now(), (int) $t['id']]);
             if ($pub) {
-                Db::update('la_publications', ['statut' => 'erreur', 'derniere_erreur' => mb_substr($message, 0, 500), 'updated_at' => Db::now()], (int) $pub['id']);
+                // Annonce refusée à la création : « refusée » (motif de la plateforme) ; sinon « erreur » avec son type
+                $statut = $type === 'refus' && $t['action'] === 'publier' ? 'refuse' : 'erreur';
+                Db::update('la_publications', ['statut' => $statut, 'derniere_erreur' => mb_substr($message, 0, 500), 'erreur_type' => $type, 'updated_at' => Db::now()], (int) $pub['id']);
                 self::journal($acteur, (int) $pub['vehicule_id'], (int) $pub['canal_id'], (int) $pub['id'], $t['action'], 'echec', ($canal['nom'] ?? '') . ' : ' . $message);
             }
-            return ['ok' => false, 'message' => $message];
+            // Accès refusés par la plateforme : le compte doit être reconnecté
+            if ($type === 'connexion' && $canal && ($c = Db::one('SELECT id FROM la_comptes_diffusion WHERE canal_id = ?', [(int) $canal['id']]))) {
+                Db::update('la_comptes_diffusion', ['statut' => 'erreur', 'jeton_chiffre' => null, 'jeton_expire_le' => null, 'dernier_message' => mb_substr($message, 0, 500), 'updated_at' => Db::now()], (int) $c['id']);
+            }
+            return ['ok' => false, 'type' => $type, 'message' => $message];
         };
         if (!$pub || !$canal || !$v) {
             return $fail('Publication introuvable.', false);
         }
+        // Contrôles avant envoi, dans l'ordre exigé par la plateforme
+        $etat = self::autoEtat($canal);
+        if ($etat['etat'] !== 'pret') {
+            return $fail($etat['message'], false, ['abonnement' => 'abonnement', 'non_connecte' => 'connexion'][$etat['etat']] ?? 'configuration');
+        }
         $con = self::connecteur($canal['code']);
         if (!$con || !in_array($t['action'], $con->capacites(), true)) {
-            return $fail('Opération non proposée par ' . $canal['nom'] . '.', false);
+            return $fail('Opération non proposée par ' . $canal['nom'] . ' : renseignez son adresse dans « Comptes de diffusion » ou faites-la sur la plateforme.', false, 'configuration');
         }
-        $compte = null;
-        if ($canal['code'] !== 'bac_a_sable') {
-            if (!ComptesDiffusion::estConnecte((int) $canal['id'])) {
-                return $fail('Compte ' . $canal['nom'] . ' non connecté ou abonnement expiré : reconnectez-le dans « Comptes de diffusion ».', false);
-            }
-            $compte = Db::one('SELECT * FROM la_comptes_diffusion WHERE canal_id = ?', [(int) $canal['id']]);
-        }
+        $compte = $canal['code'] === 'bac_a_sable' ? null : Db::one('SELECT * FROM la_comptes_diffusion WHERE canal_id = ?', [(int) $canal['id']]);
         $d = self::donnees($v, $canal, $pub);
+        $d['variables'] = self::variables($v, $d);
         try {
             $r = $con->executer($t['action'], $pub, $d, $compte);
         } catch (Throwable $e) {
             error_log('[diffusion] ' . $canal['code'] . ' : ' . $e->getMessage());
-            $r = ['ok' => false, 'temporaire' => true, 'message' => 'Erreur technique pendant l\'envoi.'];
+            $r = ['ok' => false, 'temporaire' => true, 'type' => 'technique', 'message' => 'Erreur technique pendant l\'envoi.'];
         }
         if (empty($r['ok'])) {
-            return $fail((string) ($r['message'] ?? 'Échec sans explication de la plateforme.'), !empty($r['temporaire']));
+            return $fail((string) ($r['message'] ?? 'Échec sans explication de la plateforme.'), !empty($r['temporaire']), (string) ($r['type'] ?? 'technique'));
         }
         $now = Db::now();
-        $upd = ['derniere_synchro' => $now, 'derniere_erreur' => '', 'updated_at' => $now];
+        $upd = ['derniere_synchro' => $now, 'derniere_erreur' => '', 'erreur_type' => '', 'updated_at' => $now];
         if ($t['action'] === 'retirer') {
             $upd['statut'] = 'retire';
         } else {
@@ -823,7 +1121,7 @@ final class Diffusion
         }
         Db::update('la_publications', $upd, (int) $pub['id']);
         Db::exec("UPDATE la_diffusion_taches SET statut = 'fait', claim = '', dedupe_key = NULL, tentatives = tentatives + 1, updated_at = ? WHERE id = ?", [$now, (int) $t['id']]);
-        self::journal($acteur, (int) $pub['vehicule_id'], (int) $pub['canal_id'], (int) $pub['id'], $t['action'], 'succes', $canal['nom'] . ' : ' . ($r['message'] ?? 'opération confirmée.'));
-        return ['ok' => true, 'message' => (string) ($r['message'] ?? 'Opération confirmée par ' . $canal['nom'] . '.')];
+        self::journal($acteur, (int) $pub['vehicule_id'], (int) $pub['canal_id'], (int) $pub['id'], $t['action'], 'succes', (string) ($r['message'] ?? $canal['nom'] . ' : opération confirmée.'));
+        return ['ok' => true, 'type' => '', 'message' => (string) ($r['message'] ?? 'Opération confirmée par ' . $canal['nom'] . '.')];
     }
 }

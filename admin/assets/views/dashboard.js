@@ -176,10 +176,13 @@
         a_retirer: ["alert", "td-ico--danger", "Retirer l'annonce", function (x) { return "véhicule " + (x.statutVehicule === "retire" ? "retiré de la vente" : "vendu"); }],
         a_mettre_a_jour: ["refresh", "td-ico--warn", "Mettre à jour l'annonce", function (x) { return x.prixPublie != null && x.prixPublie !== x.prix ? "prix " + fmt.euros(x.prixPublie) + " → " + fmt.euros(x.prix) : "fiche modifiée"; }],
         erreur: ["alert", "td-ico--danger", "Annonce en erreur", function (x) { return x.erreur || "à vérifier"; }],
+        refuse: ["alert", "td-ico--danger", "Annonce refusée", function (x) { return x.erreur || "motif non précisé"; }],
         expire: ["clock", "td-ico--warn", "Renouveler l'annonce", function () { return "parution terminée"; }],
       };
       dif.items.forEach(function (x) {
-        var m = DIF[x.statut] || DIF.erreur;
+        var m = (DIF[x.statut] || DIF.erreur).slice();
+        // Erreur d'une plateforme : intitulé selon sa cause (offre payante, limite, reconnexion…)
+        if (x.statut === "erreur") m[2] = { abonnement: "Abonnement requis", quota: "Limite de l'offre atteinte", connexion: "Reconnecter le compte", refus: "Mise à jour refusée", configuration: "Publication en 1 clic à vérifier" }[x.erreurType] || m[2];
         rows.push({ g: "Annonces", html: '<li class="td-row"><span class="td-ico ' + m[1] + '">' + icon(m[0]) + "</span>" +
           '<div class="td-body"><strong>' + m[2] + " " + esc(x.canal) + "</strong><small>" + esc(x.vehicule + (x.numeroStock ? " · " + x.numeroStock : "") + " · " + m[3](x)) + "</small></div>" +
           '<a class="td-go" href="#/vehicules/' + x.vehiculeId + '/diffusion" aria-label="Ouvrir la diffusion">' + icon("chevron-right") + "</a></li>" });

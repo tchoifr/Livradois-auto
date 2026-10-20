@@ -304,7 +304,7 @@ const difV = async (token = A) => (await call("admin/diffusion/vehicule", { toke
 let dif = await difV();
 const cn = (code, d = dif) => d.canaux.find((c) => c.code === code);
 ok(cn("site") && cn("leboncoin") && cn("lacentrale"), "canaux de diffusion : site, Leboncoin, La Centrale");
-ok(cn("leboncoin").mode === "manuel" && cn("lacentrale").mode === "manuel" && cn("leboncoin").raisonManuel.includes("API") && cn("leboncoin").capacites.length === 0,
+ok(cn("leboncoin").mode === "manuel" && cn("lacentrale").mode === "manuel" && cn("leboncoin").unClic.etat === "abonnement" && cn("leboncoin").raisonManuel.includes("abonnés") && cn("leboncoin").capacites.length === 0,
   "Leboncoin et La Centrale en publication assistée : aucune publication automatique simulée", cn("leboncoin"));
 ok(cn("site").statut === "non_publie" && cn("leboncoin").donnees.titre.startsWith("Toyota Yaris") && cn("leboncoin").donnees.photos.length === 5, "brouillon non publié ; annonce préparée depuis la fiche (titre, photos)");
 const LBC = cn("leboncoin").canalId, LC = cn("lacentrale").canalId, SITE = cn("site").canalId;
@@ -427,6 +427,61 @@ if (!SB) {
   const cron = await call("cron/notifications", { headers: { "X-Cron-Key": process.env.CRON_KEY || "" } });
   sb = cn("bac_a_sable", await difS());
   ok(cron.status === 200 && sb.statut === "retire", "tâche planifiée : retrait confirmé par la plateforme", cron.data);
+}
+
+// ---------------------------------------------------------------------------------------------
+section("12. Publication en 1 clic : contrôles et erreurs des plateformes");
+const ar = fixture("analyse-reponse");
+ok(ar.cree.ok && ar.cree.reference === "12345" && ar.cree.url.includes("lacentrale.fr"), "réponse 201 : référence et lien de l'annonce lus", ar.cree);
+ok(!ar.sansRef.ok && ar.sansRef.message.includes("non confirmée"), "réponse sans référence : publication non confirmée (jamais affichée comme réussie)");
+ok(ar.refus.type === "refus" && ar.refus.message.includes("mileage : doit être positif") && !ar.refus.temporaire, "refus de la plateforme : motif détaillé, pas de nouvel essai", ar.refus);
+ok(ar.abonnement.type === "abonnement" && ar.abonnement403.type === "abonnement" && ar.abonnement.message.includes("offre pro payante") && ar.quota.type === "quota" && ar.droits.type === "droits",
+  "offre payante requise / limite de l'offre atteinte / droits insuffisants : distingués", { a: ar.abonnement, q: ar.quota });
+ok(ar.connexion.type === "connexion" && ar.limite.temporaire && ar.panne.temporaire && ar.injoignable.temporaire, "accès expirés → reconnexion ; trop de demandes ou panne → nouvel essai automatique");
+ok(ar.dejaRetiree.ok && ar.introuvable.type === "introuvable", "retrait d'une annonce déjà absente accepté ; modification d'une annonce disparue signalée");
+ok(ar.modele.ok === "" && ar.modele.guillemets.includes("guillemets") && ar.modele.inconnue.includes("intitule") && ar.modele.json.includes("JSON") && JSON.parse(ar.modele.corps).t === 'Clio "RS"',
+  "modèle d'annonce : variables contrôlées, valeurs échappées", ar.modele);
+ok((await call("admin/diffusion/compte", { token: A, body: { canalId: LC, apiUrlCreation: "https://api.exemple.com/annonces" } })).status === 422, "adresse de publication hors domaine La Centrale refusée");
+res = await call("admin/diffusion/compte", { token: A, body: { canalId: LC, apiModele: '{"title": "{{titre}}"}' } });
+ok(res.status === 422 && res.data.error.includes("guillemets"), "modèle mal écrit refusé avec explication", res.data);
+ok((await call("admin/diffusion/compte", { token: A, body: { canalId: LC, apiActif: true } })).status === 422, "1 clic impossible à activer sans adresse ni modèle");
+const modeleLC = '{"title": {{titre}}, "price": {{prix}}, "mileage": {{km}}, "year": {{annee}}, "description": {{description}}, "pictures": {{photos}}}';
+res = await call("admin/diffusion/compte", { token: A, body: { canalId: LC, apiActif: true, apiMethodeCreation: "POST", apiUrlCreation: "https://api.lacentrale.fr/v1/annonces",
+  apiMethodeModification: "PUT", apiUrlModification: "https://api.lacentrale.fr/v1/annonces/{reference}", apiMethodeRetrait: "DELETE", apiUrlRetrait: "https://api.lacentrale.fr/v1/annonces/{reference}",
+  apiCheminReference: "data.id", apiModele: modeleLC } });
+ok(res.status === 200 && res.data.publicationAuto && res.data.capacites.length === 3 && res.data.unClic.etat === "abonnement", "API de publication La Centrale enregistrée : 1 clic en attente de l'abonnement", res.data?.unClic);
+ok((await call("admin/diffusion/compte", { token: RN, body: { canalId: LC, apiActif: false } })).status === 403, "seul le propriétaire configure la publication en 1 clic");
+const vP = (await mkVeh(A, nord.id, "Renault", "Megane", { description: descD, photos: photosD, miseEnCirculation: "2022-01" })).data;
+res = await call("admin/diffusion/compte/apercu", { token: A, body: { canalId: LC, vehiculeId: vP.dbId } });
+const corpsLC = res.status === 200 ? JSON.parse(res.data.corps) : {};
+ok(corpsLC.price === 12500 && corpsLC.title.startsWith("Renault Megane") && corpsLC.pictures.length === 5 && corpsLC.pictures[0].startsWith("http") && res.data.requete.startsWith("POST https://api.lacentrale.fr"),
+  "aperçu de l'envoi : JSON de l'annonce, photos en adresses complètes, aucun appel", res.data);
+let r1 = (await call("admin/diffusion/publier", { token: A, body: { vehiculeId: vP.dbId, canaux: [LC] } })).data.resultats[0];
+ok(!r1.ok && r1.bloque === "abonnement" && r1.aide.includes("lacentrale") && r1.message.includes("abonnés"), "1 clic sans abonnement : bloqué, lien vers les offres La Centrale", r1);
+await call("admin/diffusion/compte", { token: A, body: { canalId: LC, abonnementActif: true, abonnementOffre: "Pack Business" } });
+r1 = (await call("admin/diffusion/publier", { token: A, body: { vehiculeId: vP.dbId, canaux: [LC] } })).data.resultats[0];
+ok(!r1.ok && r1.bloque === "non_connecte" && r1.message.includes("non connecté"), "abonnement indiqué mais compte non connecté : connexion demandée", r1);
+const dP = (await call("admin/diffusion/vehicule", { token: A, query: { id: vP.dbId } })).data;
+ok(cn("lacentrale", dP).mode === "manuel" && cn("lacentrale", dP).unClic.etat === "non_connecte" && cn("lacentrale", dP).statut === "non_publie", "rien n'est publié tant que la connexion n'est pas vérifiée (publication assistée proposée)");
+if (SB) {
+  const vE = (await mkVeh(A, nord.id, "Opel", "Corsa", { description: descD, photos: photosD, miseEnCirculation: "2021-02" })).data;
+  const pubE = () => call("admin/diffusion/publier", { token: A, body: { vehiculeId: vE.dbId, canaux: [SB.canalId] } });
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vE.dbId, canalId: SB.canalId, description: descD + " [ECHEC]" } });
+  res = await pubE();
+  let sbE = cn("bac_a_sable", res.data.diffusion);
+  ok(!res.data.resultats[0].ok && res.data.resultats[0].type === "refus" && sbE.statut === "refuse" && sbE.erreurType === "refus" && sbE.erreur.includes("Description non conforme"), "1 clic refusé par la plateforme : « Refusé » avec le motif", sbE);
+  ok((await call("admin/journee", { token: A })).data.diffusion.items.some((i) => i.vehiculeId === vE.dbId && i.statut === "refuse"), "annonce refusée dans « À faire »");
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vE.dbId, canalId: SB.canalId, description: descD + " [ABONNEMENT]" } });
+  res = await pubE();
+  sbE = cn("bac_a_sable", res.data.diffusion);
+  ok(res.data.resultats[0].type === "abonnement" && sbE.statut === "erreur" && sbE.erreurType === "abonnement" && sbE.erreur.includes("offre pro payante"), "offre payante exigée par la plateforme : erreur « abonnement » explicite", sbE);
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vE.dbId, canalId: SB.canalId, description: descD + " [QUOTA]" } });
+  res = await pubE();
+  ok(res.data.resultats[0].type === "quota" && cn("bac_a_sable", res.data.diffusion).erreurType === "quota", "limite d'annonces de l'offre atteinte : erreur « quota »", res.data.resultats[0]);
+  await call("admin/diffusion/adaptation", { token: A, body: { vehiculeId: vE.dbId, canalId: SB.canalId, description: "" } });
+  res = await pubE();
+  sbE = cn("bac_a_sable", res.data.diffusion);
+  ok(res.data.resultats[0].ok && sbE.statut === "publie" && sbE.erreurType === "" && sbE.erreur === "", "après correction : publié en 1 clic, erreur effacée", sbE);
 }
 
 console.log(`\n${passes} réussis, ${failures} échoués`);

@@ -135,6 +135,7 @@ final class ComptesDiffusion
     {
         $p = self::PLATEFORMES[$canal['code']];
         $st = self::statut($c);
+        $con = Diffusion::connecteur($canal['code']);
         return [
             'canalId' => (int) $canal['id'], 'code' => $canal['code'], 'nom' => $canal['nom'], 'urlDepot' => $canal['url_depot'],
             'conditions' => $p['conditions'], 'aide' => $p['aide'], 'domaines' => $p['domaines'],
@@ -144,7 +145,15 @@ final class ComptesDiffusion
             'identifiant' => self::masque($c['identifiant']), 'secretEnregistre' => !empty($c['secret_chiffre']),
             'statut' => $st, 'statutLabel' => self::STATUTS[$st] ?? $st,
             'dernierTestLe' => $c['dernier_test_le'], 'dernierMessage' => $c['dernier_message'], 'connecteLe' => $c['connecte_le'],
-            'publicationAuto' => Diffusion::connecteur($canal['code']) !== null && in_array('publier', Diffusion::connecteur($canal['code'])->capacites(), true),
+            'publicationAuto' => $con !== null && in_array('publier', $con->capacites(), true), 'capacites' => $con ? $con->capacites() : [],
+            'unClic' => Diffusion::autoEtat($canal),
+            'api' => [
+                'actif' => (int) $c['api_actif'] === 1, 'methodeCreation' => $c['api_methode_creation'], 'urlCreation' => $c['api_url_creation'],
+                'methodeModification' => $c['api_methode_modification'], 'urlModification' => $c['api_url_modification'],
+                'methodeRetrait' => $c['api_methode_retrait'], 'urlRetrait' => $c['api_url_retrait'],
+                'cheminReference' => $c['api_chemin_reference'], 'cheminUrl' => $c['api_chemin_url'], 'modele' => (string) $c['api_modele'],
+            ],
+            'variables' => Diffusion::VARIABLES,
         ];
     }
 
@@ -203,9 +212,39 @@ final class ComptesDiffusion
         if ($accesChange) {
             $data += ['statut' => 'non_connecte', 'jeton_chiffre' => null, 'jeton_expire_le' => null, 'dernier_message' => 'Accès modifiés : testez la connexion.'];
         }
+        // Publication en 1 clic : API de publication décrite dans la documentation de la plateforme
+        $methodes = ['api_methode_creation' => ['apiMethodeCreation', ['POST', 'PUT']], 'api_methode_modification' => ['apiMethodeModification', ['PUT', 'PATCH', 'POST']],
+            'api_methode_retrait' => ['apiMethodeRetrait', ['DELETE', 'POST', 'PUT', 'PATCH']]];
+        foreach ($methodes as $col => [$k, $ok]) {
+            $data[$col] = $keep($k, $col, fn() => In::oneOf($in, $k, $ok, $ok[0], 'méthode'));
+        }
+        $urls = ['api_url_creation' => ['apiUrlCreation', 'Adresse de création'], 'api_url_modification' => ['apiUrlModification', 'Adresse de modification'],
+            'api_url_retrait' => ['apiUrlRetrait', 'Adresse de retrait']];
+        foreach ($urls as $col => [$k, $label]) {
+            $data[$col] = $keep($k, $col, fn() => trim(In::str($in, $k, 255)));
+            if ($data[$col] !== '') {
+                self::verifierUrl($data[$col], $canal, $label, false);
+            }
+        }
+        $data['api_chemin_reference'] = $keep('apiCheminReference', 'api_chemin_reference', fn() => preg_replace('/[^A-Za-z0-9_.]/', '', In::str($in, 'apiCheminReference', 80)) ?: 'id');
+        $data['api_chemin_url'] = $keep('apiCheminUrl', 'api_chemin_url', fn() => preg_replace('/[^A-Za-z0-9_.]/', '', In::str($in, 'apiCheminUrl', 80)));
+        $data['api_modele'] = $keep('apiModele', 'api_modele', fn() => trim((string) ($in['apiModele'] ?? '')));
+        $data['api_actif'] = (int) $keep('apiActif', 'api_actif', fn() => In::bool($in, 'apiActif'));
+        if ((string) $data['api_modele'] !== '' && ($err = Diffusion::erreurModele((string) $data['api_modele'])) !== '') {
+            Http::fail(422, 'Modèle d\'annonce : ' . $err);
+        }
+        if ($data['api_actif'] && ($data['api_url_creation'] === '' || trim((string) $data['api_modele']) === '')) {
+            Http::fail(422, 'Pour activer la publication en 1 clic, renseignez au minimum l\'adresse de création et le modèle d\'annonce (documentation de ' . $canal['nom'] . ').');
+        }
+        foreach (['api_url_modification', 'api_url_retrait'] as $col) {
+            if ($data[$col] !== '' && !str_contains($data[$col], '{reference}') && $data[$col] === $data['api_url_creation']) {
+                Http::fail(422, 'Les adresses de modification et de retrait désignent une annonce : ajoutez {reference} à l\'endroit de sa référence (ex. …/annonces/{reference}).');
+            }
+        }
         Db::update('la_comptes_diffusion', $data, (int) $c['id']);
+        $unClic = (int) $c['api_actif'] !== $data['api_actif'] ? ($data['api_actif'] ? ', publication en 1 clic activée' : ', publication en 1 clic désactivée') : '';
         Diffusion::journal($user, null, (int) $canal['id'], null, 'compte_modifie', 'info',
-            'Compte ' . $canal['nom'] . ' mis à jour (abonnement ' . ($data['abonnement_actif'] ? 'actif' : 'inactif') . ($data['abonnement_fin'] ? ' jusqu\'au ' . date('d/m/Y', strtotime($data['abonnement_fin'])) : '') . ($secret !== '' ? ', nouvel accès enregistré' : '') . ').');
+            'Compte ' . $canal['nom'] . ' mis à jour (abonnement ' . ($data['abonnement_actif'] ? 'actif' : 'inactif') . ($data['abonnement_fin'] ? ' jusqu\'au ' . date('d/m/Y', strtotime($data['abonnement_fin'])) : '') . ($secret !== '' ? ', nouvel accès enregistré' : '') . $unClic . ').');
         Audit::log($user, 'diffusion.compte', 'canal', (int) $canal['id'], null, array_diff_key($data, ['secret_chiffre' => 1]));
         return self::out($canal, self::compte((int) $canal['id']));
     }
@@ -260,9 +299,10 @@ final class ComptesDiffusion
 
     /**
      * Jeton d'accès valide pour un connecteur (OAuth 2.0) : réutilisé tant qu'il n'a pas expiré, sinon redemandé
-     * à la plateforme. Null si le compte n'est pas connecté ou si la plateforme refuse (le compte passe alors « erreur »).
+     * à la plateforme ($renouveler : redemandé même s'il semble valide, après un refus). Null si le compte n'est pas connecté
+     * ou si la plateforme refuse (le compte passe alors « erreur ») ; exception si la plateforme est momentanément injoignable.
      */
-    public static function jeton(int $canalId): ?string
+    public static function jeton(int $canalId, bool $renouveler = false): ?string
     {
         $c = Db::one('SELECT * FROM la_comptes_diffusion WHERE canal_id = ?', [$canalId]);
         if (!$c || self::statut($c) !== 'connecte') {
@@ -271,7 +311,7 @@ final class ComptesDiffusion
         if ($c['methode'] === 'cle_api') {
             return Coffre::dechiffrer($c['secret_chiffre']);
         }
-        if ($c['jeton_chiffre'] && $c['jeton_expire_le'] && $c['jeton_expire_le'] > date('Y-m-d H:i:s', time() + 60)) {
+        if (!$renouveler && $c['jeton_chiffre'] && $c['jeton_expire_le'] && $c['jeton_expire_le'] > date('Y-m-d H:i:s', time() + 60)) {
             return Coffre::dechiffrer($c['jeton_chiffre']);
         }
         $canal = self::canal($canalId);
@@ -280,14 +320,42 @@ final class ComptesDiffusion
             http_build_query(['grant_type' => 'client_credentials', 'client_id' => $c['identifiant'], 'client_secret' => (string) Coffre::dechiffrer($c['secret_chiffre'])]));
         $r = self::analyserJeton($status, $body);
         if (!$r['ok']) {
-            if ($status !== 0 && $status !== 429) {
-                Db::update('la_comptes_diffusion', ['statut' => 'erreur', 'jeton_chiffre' => null, 'jeton_expire_le' => null, 'dernier_message' => mb_substr('Renouvellement de l\'accès refusé : ' . $r['message'], 0, 500), 'updated_at' => Db::now()], (int) $c['id']);
-                Diffusion::journal(null, null, $canalId, null, 'compte_jeton', 'echec', $canal['nom'] . ' : ' . $r['message']);
+            if ($status === 0 || $status === 429) {
+                throw new RuntimeException($r['message']);
             }
+            Db::update('la_comptes_diffusion', ['statut' => 'erreur', 'jeton_chiffre' => null, 'jeton_expire_le' => null, 'dernier_message' => mb_substr('Renouvellement de l\'accès refusé : ' . $r['message'], 0, 500), 'updated_at' => Db::now()], (int) $c['id']);
+            Diffusion::journal(null, null, $canalId, null, 'compte_jeton', 'echec', $canal['nom'] . ' : ' . $r['message']);
             return null;
         }
         Db::update('la_comptes_diffusion', ['jeton_chiffre' => Coffre::chiffrer($r['jeton']), 'jeton_expire_le' => date('Y-m-d H:i:s', time() + max(60, (int) $r['expire'])), 'updated_at' => Db::now()], (int) $c['id']);
         return $r['jeton'];
+    }
+
+    /** Aperçu de ce qui serait envoyé à la plateforme pour un véhicule (aucun appel réseau). */
+    public static function apercu(array $user, array $in): array
+    {
+        Access::require($user, 'diffusion.comptes');
+        $canal = self::canal((int) ($in['canalId'] ?? 0));
+        $c = self::compte((int) $canal['id']);
+        $modele = trim((string) ($in['apiModele'] ?? $c['api_modele'] ?? ''));
+        if (($err = Diffusion::erreurModele($modele)) !== '') {
+            Http::fail(422, 'Modèle d\'annonce : ' . $err);
+        }
+        $vid = (int) ($in['vehiculeId'] ?? 0);
+        [$scope, $p] = Access::scope($user, 'parc_id');
+        $v = $vid ? Access::vehicule($user, $vid)
+            : Db::one("SELECT * FROM la_vehicules WHERE statut IN ('disponible', 'reserve', 'brouillon')$scope ORDER BY statut = 'disponible' DESC, updated_at DESC LIMIT 1", $p);
+        if (!$v) {
+            Http::fail(404, 'Aucun véhicule pour l\'aperçu.');
+        }
+        $pub = Db::one('SELECT * FROM la_publications WHERE vehicule_id = ? AND canal_id = ?', [(int) $v['id'], (int) $canal['id']]);
+        $d = Diffusion::donnees($v, $canal, $pub);
+        $corps = Diffusion::corps($modele, Diffusion::variables($v, $d));
+        return [
+            'vehicule' => $v['marque'] . ' ' . $v['modele'] . ' (' . $v['numero_stock'] . ')',
+            'requete' => trim((string) ($in['apiMethodeCreation'] ?? $c['api_methode_creation'])) . ' ' . trim((string) ($in['apiUrlCreation'] ?? $c['api_url_creation'])),
+            'corps' => json_encode(json_decode((string) $corps), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ];
     }
 
     public static function deconnecter(array $user, int $canalId): array
@@ -342,7 +410,7 @@ final class ComptesDiffusion
      * Adresse sortante autorisée : https, domaine officiel de la plateforme, jamais une adresse interne
      * (protection contre l'utilisation du serveur pour joindre son propre réseau).
      */
-    private static function verifierUrl(string $url, array $canal, string $label, bool $resoudre): void
+    public static function verifierUrl(string $url, array $canal, string $label, bool $resoudre): void
     {
         $p = parse_url($url);
         if (!$p || ($p['scheme'] ?? '') !== 'https' || empty($p['host']) || isset($p['user']) || isset($p['pass']) || (isset($p['port']) && (int) $p['port'] !== 443)) {

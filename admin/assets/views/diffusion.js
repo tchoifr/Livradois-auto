@@ -71,10 +71,61 @@
     return overviewPage(body, q);
   }, { nav: "diffusion", title: "Diffusion des annonces", perm: "diffusion.voir" });
 
+  /* ---------------------------------------------------------------- explications : 1 clic bloqué, erreur d'une plateforme */
+  var ETAPES = [["abonnement", "Abonnement pro actif"], ["non_connecte", "Compte connecté (accès vérifiés)"], ["a_configurer", "API de publication renseignée"]];
+  function etapes(etat) {
+    var idx = etat === "pret" ? 3 : ETAPES.map(function (x) { return x[0]; }).indexOf(etat);
+    if (idx === -1) return "";
+    return '<ol class="unclic-steps">' + ETAPES.map(function (x, i) {
+      var cls = i < idx ? "is-done" : i === idx ? "is-todo" : "";
+      return '<li class="' + cls + '">' + icon(i < idx ? "check" : i === idx ? "alert" : "clock", "i--sm") + "<span>" + x[1] + "</span></li>";
+    }).join("") + "</ol>";
+  }
+  function ouvrir(url) { if (url) window.open(url, "_blank", "noopener"); return true; }
+
+  /** 1 clic impossible : étape manquante (abonnement → connexion → API), et la publication assistée en attendant. */
+  BO.diffusionBloque = function (canal, etat, vehiculeId) {
+    var nom = canal.nom, admin = BO.can("diffusion.comptes");
+    var titres = { abonnement: "Abonnement " + nom + " requis", non_connecte: "Compte " + nom + " à connecter", a_configurer: "Publication en 1 clic à configurer", indisponible: "Publication assistée" };
+    var actions = [{ label: "Fermer" }];
+    if (etat.aide) actions.push({ label: "Voir les offres " + nom, icon: "external", onClick: function () { return ouvrir(etat.aide); } });
+    if (admin && etat.etat !== "indisponible") actions.push({ label: "Comptes de diffusion", icon: "key", onClick: function () { BO.go("#/diffusion?onglet=comptes"); } });
+    if (vehiculeId) actions.push({ label: "Publier en mode assisté", primary: true, icon: "clipboard", onClick: function () { BO.go("#/vehicules/" + vehiculeId + "/diffusion?kit=" + canal.canalId); } });
+    BO.modal({
+      title: titres[etat.etat] || "Publication en 1 clic indisponible",
+      body: "<p>" + esc(etat.message) + "</p>" + etapes(etat.etat) +
+        (!admin && etat.etat !== "indisponible" ? '<p class="muted small">Le propriétaire gère les abonnements et la connexion des comptes.</p>' : "") +
+        '<p class="muted small">En attendant, la publication assistée reste possible : le dashboard prépare le texte et les photos, vous publiez sur ' + esc(nom) + " puis vous enregistrez le lien.</p>",
+      actions: actions,
+    });
+  };
+
+  /** Erreur renvoyée par une plateforme : que faire, selon son type. */
+  BO.diffusionErreur = function (nom, r, vehiculeId, aide) {
+    var t = r.type || "technique", admin = BO.can("diffusion.comptes");
+    var info = {
+      refus: ["Annonce refusée par " + nom, "Corrigez l'annonce (texte, photos ou caractéristiques) avec « Adapter l'annonce », puis republiez."],
+      abonnement: ["Offre " + nom + " insuffisante", "Souscrivez une offre pro qui inclut la publication (ou faites évoluer la vôtre), puis réessayez."],
+      quota: ["Limite de votre offre " + nom + " atteinte", "Retirez une annonce sur " + nom + " ou passez à une offre supérieure, puis réessayez."],
+      connexion: ["Reconnexion à " + nom + " nécessaire", admin ? "Testez à nouveau la connexion dans « Comptes de diffusion » (ou saisissez de nouveaux accès)." : "Demandez au propriétaire de reconnecter le compte."],
+      droits: ["Opération refusée par " + nom, "Votre compte " + nom + " n'a pas les droits pour cette opération : vérifiez votre offre auprès de la plateforme."],
+      configuration: ["Publication en 1 clic à vérifier", "La configuration de l'API de publication de " + nom + " doit être corrigée (Comptes de diffusion)."],
+    }[t];
+    if (!info) { BO.toast(r.message, true); return; }
+    var actions = [{ label: "Fermer" }];
+    if ((t === "abonnement" || t === "quota" || t === "droits") && aide) actions.push({ label: "Voir les offres " + nom, icon: "external", onClick: function () { return ouvrir(aide); } });
+    if ((t === "connexion" || t === "configuration") && admin) actions.push({ label: "Comptes de diffusion", icon: "key", primary: true, onClick: function () { BO.go("#/diffusion?onglet=comptes"); } });
+    if (t === "refus" && vehiculeId && !/\/diffusion/.test(location.hash)) actions.push({ label: "Ouvrir l'annonce", primary: true, onClick: function () { BO.go("#/vehicules/" + vehiculeId + "/diffusion"); } });
+    BO.modal({ title: info[0], body: '<p class="pub-miss pub-miss--block">' + icon("alert", "i--sm") + esc(r.message) + "</p><p>" + esc(info[1]) + "</p>", actions: actions });
+  };
+
   /* ---------------------------------------------------------------- vue d'ensemble */
   function overviewPage(body, q) {
-    var st = { filtre: ["traiter", "nondiffuse"].indexOf(q.filtre) !== -1 ? q.filtre : "", q: q.q || "" };
-    return BO.api("admin/diffusion", { query: { parc: BO.parcFilter() } }).then(function (o) {
+    var st = { filtre: ["traiter", "nondiffuse"].indexOf(q.filtre) !== -1 ? q.filtre : "", q: q.q || "" }, o = null, peut = BO.can("diffusion.publier");
+    function load() { return BO.api("admin/diffusion", { query: { parc: BO.parcFilter() } }).then(function (data) { o = data; draw(); }); }
+    function canalDe(id) { return o.canaux.filter(function (c) { return c.canalId === id; })[0]; }
+
+    function draw() {
       var k = o.compteurs, externes = o.canaux.filter(function (c) { return c.type !== "site"; });
       var kpi = function (filtre, ic, label, value, small, cls) {
         return '<button type="button" class="kpi' + (cls ? " " + cls : "") + '" data-filtre="' + filtre + '"><span class="kpi__label">' + icon(ic) + label + "</span><strong>" + value + "</strong><small>" + small + "</small></button>";
@@ -85,9 +136,12 @@
           kpi("", "eye", "Annonces en ligne", k.actives, "sur le site · " + (parCanal || "aucune plateforme")) +
           kpi("traiter", "alert", "À retirer", k.aRetirer, "véhicules vendus ou retirés", k.aRetirer ? "kpi--hot" : "") +
           kpi("traiter", "refresh", "À mettre à jour", k.aMettreAJour, "prix, texte ou photos modifiés", k.aMettreAJour ? "kpi--warn" : "") +
-          kpi("traiter", "clock", "À renouveler · erreurs", k.aRenouveler + " · " + k.erreurs, (k.enAttente ? k.enAttente + " en attente de confirmation" : "expirées ou refusées"), k.erreurs ? "kpi--warn" : "") +
+          kpi("traiter", "clock", "À renouveler · erreurs", k.aRenouveler + " · " + k.erreurs, (k.enAttente ? k.enAttente + " en attente de confirmation" : "expirées, refusées ou en erreur"), k.erreurs ? "kpi--warn" : "") +
         "</div>" +
-        '<p class="dif-modes">' + o.canaux.map(function (c) { return "<span><strong>" + esc(c.nom) + "</strong> " + modeTag(c) + "</span>"; }).join("") +
+        '<p class="dif-modes">' + o.canaux.map(function (c) {
+          var u = c.unClic && c.unClic.etat !== "pret" ? ' <button type="button" class="link small" data-pourquoi="' + c.canalId + '">1 clic : ' + esc({ abonnement: "abonnement requis", non_connecte: "compte à connecter", a_configurer: "API à renseigner", indisponible: "non disponible" }[c.unClic.etat] || "") + "</button>" : "";
+          return "<span><strong>" + esc(c.nom) + "</strong> " + modeTag(c) + u + "</span>";
+        }).join("") +
           (BO.can("diffusion.comptes") ? '<a class="link" href="#/diffusion?onglet=comptes">' + icon("key", "i--sm") + "Comptes de diffusion</a>" : "") + "</p>" +
         '<div class="filterbar"><div class="seg" data-seg>' +
           [["", "Tous les véhicules"], ["traiter", "À traiter"], ["nondiffuse", "Pas encore sur les plateformes"]].map(function (f) {
@@ -95,38 +149,73 @@
           }).join("") + "</div>" +
           '<label class="search search-inline">' + icon("search") + '<input class="input" type="search" data-q placeholder="Modèle ou n° de stock" value="' + esc(st.q) + '" aria-label="Rechercher un véhicule"></label></div>' +
         '<div data-rows></div>';
-      function rows() {
-        BO.setQuery({ filtre: st.filtre, q: st.q });
-        var needle = st.q.toLowerCase();
-        var list = o.lignes.filter(function (l) {
-          if (needle && (l.vehicule + " " + l.numeroStock).toLowerCase().indexOf(needle) === -1) return false;
-          if (st.filtre === "traiter") return l.canaux.some(function (c) { return A_TRAITER.indexOf(c.statut) !== -1; });
-          if (st.filtre === "nondiffuse") return ["disponible", "reserve"].indexOf(l.statutVehicule) !== -1 && l.canaux.some(function (c, i) { return o.canaux[i].type !== "site" && ["non_publie", "retire", "refuse"].indexOf(c.statut) !== -1; });
-          return true;
-        });
-        $("[data-rows]", body).innerHTML = list.length ? '<div class="table-wrap"><table class="table dif-table"><thead><tr><th>Véhicule</th><th class="num">Prix</th>' +
-          o.canaux.map(function (c) { return "<th>" + esc(c.nom) + "</th>"; }).join("") + "</tr></thead><tbody>" +
-          list.map(function (l) {
-            return '<tr data-go="' + l.vehiculeId + '"><td><a class="matrix-veh" href="#/vehicules/' + l.vehiculeId + '/diffusion">' + BO.thumb(l.photo, "row-img") +
-              "<span><strong>" + esc(l.vehicule) + "</strong><small>" + esc(l.numeroStock || "") + " · " + esc(l.statutVehiculeLabel) + "</small></span></a></td>" +
-              '<td class="num">' + fmt.euros(l.prix) + "</td>" + l.canaux.map(function (c) { return "<td>" + pill(c.statut, c.statutLabel) + "</td>"; }).join("") + "</tr>";
-          }).join("") + "</tbody></table></div>"
-          : '<div class="card empty">' + icon("check") + "<p>" + (st.filtre === "traiter" ? "Aucune annonce à traiter : tout est à jour." : "Aucun véhicule dans cette sélection.") + "</p></div>";
-      }
-      body.addEventListener("click", function (e) {
-        var b = e.target.closest("[data-f], [data-filtre]");
-        if (b) {
-          st.filtre = b.hasAttribute("data-f") ? b.getAttribute("data-f") : b.getAttribute("data-filtre");
-          $$("[data-f]", body).forEach(function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-f") === st.filtre)); });
-          rows();
-          return;
-        }
-        var tr = e.target.closest("[data-go]");
-        if (tr && !e.target.closest("a")) BO.go("#/vehicules/" + tr.getAttribute("data-go") + "/diffusion");
-      });
       $("[data-q]", body).addEventListener("input", function (e) { st.q = e.target.value.trim(); rows(); });
       rows();
+    }
+
+    function cellule(l, c, i) {
+      var canal = o.canaux[i], enVente = ["brouillon", "disponible", "reserve"].indexOf(l.statutVehicule) !== -1;
+      var pret = canal.type === "site" || !canal.unClic || canal.unClic.etat === "pret";
+      var bouton = peut && enVente && ["non_publie", "retire", "refuse", "suspendu"].indexOf(c.statut) !== -1
+        ? '<button type="button" class="cell-pub' + (pret ? "" : " is-locked") + '" data-pub="' + l.vehiculeId + ":" + c.canalId + '" title="' + esc(pret ? "Publier en 1 clic sur " + canal.nom : "1 clic indisponible : " + canal.unClic.message) + '">' +
+          icon(pret ? "share" : "lock", "i--sm") + "Publier</button>" : "";
+      var err = c.erreur && (c.statut === "erreur" || c.statut === "refuse") ? ' title="' + esc(c.erreur) + '"' : "";
+      return '<td><span class="cell-st"' + err + ">" + pill(c.statut, c.statutLabel) + bouton + "</span></td>";
+    }
+
+    function rows() {
+      BO.setQuery({ filtre: st.filtre, q: st.q });
+      var needle = st.q.toLowerCase();
+      var list = o.lignes.filter(function (l) {
+        if (needle && (l.vehicule + " " + l.numeroStock).toLowerCase().indexOf(needle) === -1) return false;
+        if (st.filtre === "traiter") return l.canaux.some(function (c) { return A_TRAITER.indexOf(c.statut) !== -1; });
+        if (st.filtre === "nondiffuse") return ["disponible", "reserve"].indexOf(l.statutVehicule) !== -1 && l.canaux.some(function (c, i) { return o.canaux[i].type !== "site" && ["non_publie", "retire", "refuse"].indexOf(c.statut) !== -1; });
+        return true;
+      });
+      $("[data-rows]", body).innerHTML = list.length ? '<div class="table-wrap"><table class="table dif-table"><thead><tr><th>Véhicule</th><th class="num">Prix</th>' +
+        o.canaux.map(function (c) { return "<th>" + esc(c.nom) + "</th>"; }).join("") + "</tr></thead><tbody>" +
+        list.map(function (l) {
+          return '<tr data-go="' + l.vehiculeId + '"><td><a class="matrix-veh" href="#/vehicules/' + l.vehiculeId + '/diffusion">' + BO.thumb(l.photo, "row-img") +
+            "<span><strong>" + esc(l.vehicule) + "</strong><small>" + esc(l.numeroStock || "") + " · " + esc(l.statutVehiculeLabel) + "</small></span></a></td>" +
+            '<td class="num">' + fmt.euros(l.prix) + "</td>" + l.canaux.map(function (c, i) { return cellule(l, c, i); }).join("") + "</tr>";
+        }).join("") + "</tbody></table></div>"
+        : '<div class="card empty">' + icon("check") + "<p>" + (st.filtre === "traiter" ? "Aucune annonce à traiter : tout est à jour." : "Aucun véhicule dans cette sélection.") + "</p></div>";
+    }
+
+    /** Publication en 1 clic depuis le tableau : contrôles, envoi, confirmation de la plateforme ou explication. */
+    function unClic(vid, cid, b) {
+      var canal = canalDe(cid);
+      if (canal.type !== "site" && canal.unClic && canal.unClic.etat !== "pret") { BO.diffusionBloque(canal, canal.unClic, vid); return; }
+      b.disabled = true;
+      b.classList.add("is-loading");
+      b.lastChild.textContent = "Envoi…";
+      BO.api("admin/diffusion/publier", { body: { vehiculeId: vid, canaux: [cid] } }).then(function (r) {
+        var x = r.resultats[0];
+        if (x.ok) BO.toast(canal.nom + " : " + x.message);
+        else if (x.bloque) BO.diffusionBloque(canal, { etat: x.bloque, message: x.message, aide: x.aide }, vid);
+        else if (x.type) BO.diffusionErreur(canal.nom, x, vid, x.aide || canal.aide);
+        else BO.toast(canal.nom + " : " + x.message, true);
+        if (canal.type === "site") BO.refreshCounts();
+        return load();
+      }).catch(function (e) { BO.fail(e); b.disabled = false; b.classList.remove("is-loading"); b.lastChild.textContent = "Publier"; });
+    }
+
+    body.addEventListener("click", function (e) {
+      var p = e.target.closest("[data-pub]");
+      if (p) { var k = p.getAttribute("data-pub").split(":"); unClic(+k[0], +k[1], p); return; }
+      var w = e.target.closest("[data-pourquoi]");
+      if (w) { var c = canalDe(+w.getAttribute("data-pourquoi")); BO.diffusionBloque(c, c.unClic, null); return; }
+      var b = e.target.closest("[data-f], [data-filtre]");
+      if (b) {
+        st.filtre = b.hasAttribute("data-f") ? b.getAttribute("data-f") : b.getAttribute("data-filtre");
+        $$("[data-f]", body).forEach(function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-f") === st.filtre)); });
+        rows();
+        return;
+      }
+      var tr = e.target.closest("[data-go]");
+      if (tr && !e.target.closest("a")) BO.go("#/vehicules/" + tr.getAttribute("data-go") + "/diffusion");
     });
+    return load();
   }
 
   /* ---------------------------------------------------------------- comptes de diffusion */
@@ -146,11 +235,11 @@
 
   function compteCard(c, gerer) {
     var st = BO.pill("k", c.statut, c.statutLabel);
-    var auto = c.publicationAuto
-      ? '<p class="note">' + icon("zap") + "<span>Publication automatique disponible pour " + esc(c.nom) + " une fois le compte connecté.</span></p>"
-      : '<p class="note note--warn">' + icon("info") + "<span><strong>Publication automatique pas encore disponible pour " + esc(c.nom) + ".</strong> " + esc(c.nom) +
-        " ne publie pas d'API ouverte : l'intégration sera développée à partir de la documentation officielle remise avec votre abonnement. " +
-        "La connexion ci-dessous vérifie vos accès dès maintenant ; en attendant, les annonces se publient en mode assisté (rien n'est envoyé automatiquement).</span></p>";
+    var u = c.unClic || { etat: "a_configurer", message: "" };
+    var auto = '<div class="acc-unclic' + (u.etat === "pret" ? " is-ready" : "") + '"><p class="acc-unclic__title">' + icon(u.etat === "pret" ? "zap" : "lock") +
+        (u.etat === "pret" ? "Publication en 1 clic active sur " + esc(c.nom) : "Publication en 1 clic : " + esc({ abonnement: "abonnement requis", non_connecte: "compte à connecter", a_configurer: "API de publication à renseigner" }[u.etat] || "indisponible")) + "</p>" +
+      etapes(u.etat) +
+      '<p class="small muted">' + (u.etat === "pret" ? "Les annonces partent sur " + esc(c.nom) + " en un clic ; elles ne sont marquées « publiées » qu'après confirmation de la plateforme." : esc(u.message) + " En attendant : publication assistée.") + "</p></div>";
     var head = '<div class="card__head"><h2>' + icon("share") + esc(c.nom) + "</h2>" + st + "</div>";
     var infos = '<p class="acc-cond">' + esc(c.conditions) + ' <a class="link" href="' + esc(c.aide) + '" target="_blank" rel="noopener">' + icon("external", "i--sm") + "Offres et conditions " + esc(c.nom) + "</a></p>" +
       '<p class="acc-state small muted">' + (c.dernierTestLe ? "Dernier test : " + when(c.dernierTestLe) + " — " : "") + esc(c.dernierMessage || (c.statut === "non_connecte" ? "Aucun accès vérifié." : "")) +
@@ -158,7 +247,7 @@
     if (!gerer) return '<section class="card">' + head + '<div class="card__body stack">' + infos + auto + "</div></section>";
     var dom = c.domaines.join(" ou ");
     var methodes = [{ value: "", label: "— selon la documentation de " + c.nom + " —" }, { value: "oauth2_client", label: "OAuth 2.0 — identifiant et secret client" }, { value: "cle_api", label: "Clé d'API" }];
-    return '<section class="card" data-compte="' + c.canalId + '">' + head + '<div class="card__body stack">' + infos +
+    return '<section class="card" data-compte="' + c.canalId + '">' + head + '<div class="card__body stack">' + infos + auto +
       '<form class="form-grid form-grid--2" data-form autocomplete="off">' +
         '<fieldset class="span-2 acc-sub"><legend>Abonnement</legend>' +
           BO.f.check("abonnementActif", "Abonnement pro actif chez " + esc(c.nom), c.abonnementActif) +
@@ -174,7 +263,8 @@
           '<div data-m="cle_api">' + BO.f.select("enteteCle", "Envoi de la clé", [{ value: "authorization", label: "En-tête Authorization: Bearer" }, { value: "x-api-key", label: "En-tête X-API-Key" }], c.enteteCle || "authorization") + "</div>" +
           '<div data-m="oauth2_client cle_api" class="span-2">' + BO.f.input("secret", "Secret client ou clé d'API", "", 'type="password" autocomplete="new-password" spellcheck="false" placeholder="' + (c.secretEnregistre ? "•••••••• enregistré — laisser vide pour le conserver" : "Collez l'accès fourni par " + esc(c.nom)) + '"', "jamais le mot de passe du compte") + "</div>" +
           "</div></fieldset>" +
-      "</form>" + auto +
+        apiFieldset(c, dom) +
+      "</form>" +
       '<div class="form-actions">' +
         (c.secretEnregistre ? '<button type="button" class="btn btn--ghost" data-deco>' + icon("logout") + "Déconnecter</button>" : "") +
         '<button type="button" class="btn btn--ghost" data-test' + (c.abonnementValide && c.secretEnregistre && c.methode ? "" : ' disabled title="Abonnement actif et accès enregistrés requis"') + ">" + icon("refresh") + "Tester la connexion</button>" +
@@ -182,20 +272,78 @@
       "</div></section>";
   }
 
+  var EXEMPLE = '{\n  "title": {{titre}},\n  "price": {{prix}},\n  "description": {{description}},\n  "brand": {{marque}},\n  "model": {{modele}},\n  "year": {{annee}},\n  "mileage": {{km}},\n  "fuel": {{energie}},\n  "gearbox": {{boite}},\n  "pictures": {{photos}}\n}';
+
+  /** Publication en 1 clic : API de publication décrite dans la documentation de la plateforme (adresses, champs). */
+  function apiFieldset(c, dom) {
+    var a = c.api || {};
+    var op = function (k, label, methodes, val, url, ph) {
+      return '<div class="api-op span-2">' + BO.f.select("apiMethode" + k, "Méthode", methodes, val) +
+        BO.f.input("apiUrl" + k, label, url, 'type="url" placeholder="' + esc(ph) + '"') + "</div>";
+    };
+    var base = "https://api." + c.domaines[0] + "/…";
+    var ouvert = a.actif || (a.modele || "") !== "" || (a.urlCreation || "") !== "";
+    return '<details class="span-2 acc-sub acc-api" data-api' + (ouvert ? " open" : "") + '><summary>Publication en 1 clic (API de publication)</summary>' +
+      '<p class="small muted">À remplir avec la documentation API remise par ' + esc(c.nom) + " avec l'abonnement : adresse de chaque opération et noms des champs de l'annonce. Domaine " + esc(dom) + " uniquement.</p>" +
+      BO.f.check("apiActif", "Activer la publication en 1 clic sur " + esc(c.nom), a.actif) +
+      '<div class="form-grid form-grid--2">' +
+        op("Creation", "Créer une annonce", ["POST", "PUT"], a.methodeCreation, a.urlCreation, base) +
+        op("Modification", "Modifier une annonce", ["PUT", "PATCH", "POST"], a.methodeModification, a.urlModification, base + "/{reference}") +
+        op("Retrait", "Retirer une annonce", ["DELETE", "POST", "PUT", "PATCH"], a.methodeRetrait, a.urlRetrait, base + "/{reference}") +
+        BO.f.input("apiCheminReference", "Référence renvoyée", a.cheminReference || "id", 'maxlength="80" placeholder="id ou data.id"', "chemin dans la réponse") +
+        BO.f.input("apiCheminUrl", "Lien de l'annonce renvoyé", a.cheminUrl, 'maxlength="80" placeholder="facultatif, ex. data.url"') +
+        '<div class="span-2">' + BO.f.textarea("apiModele", "Modèle de l'annonce (JSON)", a.modele, 'rows="9" spellcheck="false" placeholder="' + esc(EXEMPLE) + '"', "variables sans guillemets : \"title\": {{titre}}") + "</div>" +
+        '<div class="span-2 var-chips"><span class="small muted">Variables :</span>' + (c.variables || []).map(function (x) { return '<button type="button" class="chip" data-var="' + x + '">{{' + x + "}}</button>"; }).join("") + "</div>" +
+      "</div>" +
+      '<div class="row-actions row-actions--start"><button type="button" class="btn btn--ghost btn--sm" data-exemple>' + icon("file-text") + "Insérer un exemple</button>" +
+        '<button type="button" class="btn btn--ghost btn--sm" data-apercu>' + icon("eye") + "Aperçu de l'envoi</button>" +
+        '<span class="small muted">Exemple à adapter : remplacez « title », « price »… par les noms de champs de la documentation.</span></div>' +
+      "</details>";
+  }
+
   function wireCompte(card, c, reload) {
     if (!card) return;
-    var form = $("[data-form]", card), sel = $('[name="methode"]', form);
+    var form = $("[data-form]", card), sel = $('[name="methode"]', form), modele = $('[name="apiModele"]', form);
     function toggle() { $$("[data-m]", form).forEach(function (el) { el.hidden = el.getAttribute("data-m").split(" ").indexOf(sel.value) === -1; }); }
     sel.addEventListener("change", toggle);
     toggle();
     function body() {
-      var v = BO.values(form), out = { canalId: c.canalId, abonnementActif: v.abonnementActif, abonnementOffre: v.abonnementOffre, abonnementFin: v.abonnementFin, methode: v.methode,
-        urlJeton: v.urlJeton, urlTest: v.urlTest, enteteCle: v.methode === "cle_api" ? v.enteteCle : "" };
+      var v = BO.values(form);
+      v.canalId = c.canalId;
+      if (v.methode !== "cle_api") v.enteteCle = "";
       var ident = $('[name="identifiant"]', form);
-      if (ident.value.trim() !== ident.getAttribute("data-orig")) out.identifiant = ident.value.trim();
-      if (v.secret) out.secret = v.secret;
-      return out;
+      if (ident.value.trim() === ident.getAttribute("data-orig")) delete v.identifiant;
+      if (!v.secret) delete v.secret;
+      v.apiModele = modele.value;
+      return v;
     }
+    form.addEventListener("click", function (e) {
+      var x = e.target.closest("[data-var]");
+      if (x) {
+        var ins = "{{" + x.getAttribute("data-var") + "}}", p = modele.selectionStart || modele.value.length;
+        modele.value = modele.value.slice(0, p) + ins + modele.value.slice(modele.selectionEnd || p);
+        modele.focus();
+        modele.selectionStart = modele.selectionEnd = p + ins.length;
+        return;
+      }
+      if (e.target.closest("[data-exemple]")) {
+        if (!modele.value.trim() || window.confirm("Remplacer le modèle actuel par l'exemple ?")) modele.value = EXEMPLE;
+        return;
+      }
+      var ap = e.target.closest("[data-apercu]");
+      if (ap) {
+        var v = body();
+        ap.disabled = true;
+        BO.api("admin/diffusion/compte/apercu", { body: { canalId: c.canalId, apiModele: v.apiModele, apiMethodeCreation: v.apiMethodeCreation, apiUrlCreation: v.apiUrlCreation } }).then(function (r) {
+          BO.modal({
+            title: "Aperçu de l'envoi à " + c.nom, wide: true,
+            body: '<p class="muted small">Exemple avec ' + esc(r.vehicule) + " — rien n'est envoyé.</p>" + '<p class="api-req"><strong>' + esc(r.requete || "Adresse de création non renseignée") + "</strong></p>" +
+              '<pre class="api-json">' + esc(r.corps) + "</pre>",
+            actions: [{ label: "Fermer", primary: true }],
+          });
+        }).catch(BO.fail).then(function () { ap.disabled = false; });
+      }
+    });
     $("[data-save]", card).addEventListener("click", function (e) {
       var b = e.currentTarget; b.disabled = true;
       BO.api("admin/diffusion/compte", { body: body() }).then(function (r) { BO.toast("Compte " + r.nom + " enregistré" + (r.statut === "non_connecte" && r.secretEnregistre ? " : testez la connexion" : "")); reload(); })
@@ -308,7 +456,10 @@
         (lignes.length ? '<p class="pub-card__meta">' + lignes.join(" · ") + "</p>" : "") +
         (c.erreur && ["erreur", "refuse", "en_attente", "a_mettre_a_jour"].indexOf(c.statut) !== -1 ? '<p class="pub-miss pub-miss--block">' + icon("alert", "i--sm") + esc(c.erreur) + "</p>" : "") + prix +
         (c.statut === "a_retirer" && c.mode !== "auto" ? '<p class="pub-miss pub-miss--block">' + icon("alert", "i--sm") + "Véhicule vendu ou retiré : supprimez l'annonce sur " + esc(c.nom) + " puis confirmez ici.</p>" : "") +
-        (c.raisonManuel && ["non_publie", "retire", "refuse"].indexOf(c.statut) !== -1 ? '<p class="pub-card__why">' + esc(c.raisonManuel) + "</p>" : "") +
+        (c.unClic && c.unClic.etat !== "pret" && c.unClic.etat !== "indisponible" && ["non_publie", "retire", "refuse", "a_mettre_a_jour", "erreur"].indexOf(c.statut) !== -1
+          ? '<p class="pub-unclic">' + icon("lock", "i--sm") + "1 clic : " + esc({ abonnement: "abonnement pro requis", non_connecte: "compte à connecter", a_configurer: "API de publication à renseigner" }[c.unClic.etat] || "") +
+            ' <button type="button" class="link" data-act="pourquoi">Pourquoi ?</button></p>'
+          : c.raisonManuel && ["non_publie", "retire", "refuse"].indexOf(c.statut) !== -1 ? '<p class="pub-card__why">' + esc(c.raisonManuel) + "</p>" : "") +
         (["non_publie", "retire", "refuse"].indexOf(c.statut) !== -1 || c.statut === "a_mettre_a_jour" ? manquantsHtml(c.manquants) : "") +
         (actions.length ? '<div class="pub-card__actions">' + actions.join("") + "</div>" : "") + "</article>";
     }
@@ -323,15 +474,18 @@
         return out;
       }
       if (c.mode === "auto") {
-        if (enVente && ["non_publie", "retire", "refuse"].indexOf(s) !== -1) out.push(btn("auto-publier", "Publier", "share", true));
+        if (enVente && ["non_publie", "retire"].indexOf(s) !== -1) out.push(btn("auto-publier", "Publier en 1 clic", "zap", true));
+        if (enVente && s === "refuse") out.push(btn("auto-publier", "Republier", "share", true));
         if (s === "erreur") out.push(btn("sync", "Réessayer", "refresh", true));
         else if (s === "a_retirer") out.push(btn("sync", "Retirer maintenant", "x", true));
         else if (["publie", "a_mettre_a_jour", "expire", "en_attente"].indexOf(s) !== -1) out.push(btn("sync", "Synchroniser", "refresh", s === "a_mettre_a_jour"));
         if (["publie", "a_mettre_a_jour", "expire"].indexOf(s) !== -1) out.push(btn("auto-retirer", "Retirer", "x"));
         if (enVente) out.push(btn("adapter", "Adapter l'annonce", "edit"));
+        aideErreur(c, out);
         return out;
       }
       // Publication assistée
+      aideErreur(c, out);
       if (s === "a_retirer") { out.push(btn("m-retire", "J'ai retiré l'annonce", "check", true)); return out; }
       if (!enVente) { if (["publie", "a_mettre_a_jour", "expire", "suspendu"].indexOf(s) !== -1) out.push(btn("m-retire", "Annonce retirée", "check")); return out; }
       if (["non_publie", "retire", "refuse", "en_attente"].indexOf(s) !== -1) out.push(btn("kit-publier", "Préparer et publier", "share", true));
@@ -343,6 +497,13 @@
       if (["publie", "a_mettre_a_jour", "expire"].indexOf(s) !== -1) out.push('<details class="pub-more"><summary class="btn btn--ghost btn--sm">Autre…</summary><div>' +
         btn("m-suspendu", "Suspendue", "") + btn("m-refuse", "Refusée par " + esc(c.nom), "") + btn("m-retire", "Retirée", "") + "</div></details>");
       return out;
+    }
+
+    /** Erreur d'une plateforme : accès direct à ce qui la résout (offres, reconnexion). */
+    function aideErreur(c, out) {
+      if (["erreur", "refuse"].indexOf(c.statut) === -1) return;
+      if (["abonnement", "quota", "droits"].indexOf(c.erreurType) !== -1 && c.aide) out.push('<a class="btn btn--ghost btn--sm" href="' + esc(c.aide) + '" target="_blank" rel="noopener">' + icon("external") + "Offres " + esc(c.nom) + "</a>");
+      if ((c.erreurType === "connexion" || c.erreurType === "configuration") && BO.can("diffusion.comptes")) out.push('<a class="btn btn--ghost btn--sm" href="#/diffusion?onglet=comptes">' + icon("key") + "Comptes de diffusion</a>");
     }
 
     function wire(d) {
@@ -361,6 +522,7 @@
           else if (a === "site-retirer") BO.confirm("Retirer l'annonce du site ?", "Le véhicule passe au statut « Retiré » et n'apparaît plus sur le site. Les annonces des autres plateformes sont à retirer aussi.", "Retirer du site")
             .then(function (ok) { if (ok) post("admin/diffusion/retirer", { vehiculeId: v.dbId, canalId: c.canalId }, "Annonce retirée du site").then(function () { BO.render(); }); });
           else if (a === "auto-publier") publierAuto(c, b);
+          else if (a === "pourquoi") BO.diffusionBloque(c, c.unClic, v.dbId);
           else if (a === "sync") post("admin/diffusion/synchroniser", { vehiculeId: v.dbId, canalId: c.canalId }).then(function () { resultatToast(c.canalId); });
           else if (a === "auto-retirer") BO.confirm("Retirer l'annonce de " + c.nom + " ?", "La demande de retrait est envoyée à " + c.nom + ". L'annonce est indiquée « retirée » seulement après confirmation de la plateforme.", "Retirer")
             .then(function (ok) { if (ok) post("admin/diffusion/retirer", { vehiculeId: v.dbId, canalId: c.canalId }).then(function () { resultatToast(c.canalId); }); });
@@ -380,7 +542,9 @@
       });
       function resultatToast(id) {
         var c = last[id];
-        if (c) BO.toast(c.nom + " : " + c.statutLabel, c.statut === "erreur");
+        if (!c) return;
+        if ((c.statut === "erreur" || c.statut === "refuse") && c.erreurType) BO.diffusionErreur(c.nom, { type: c.erreurType, message: c.erreur }, v.dbId, c.aide);
+        else BO.toast(c.nom + " : " + c.statutLabel, c.statut === "erreur");
       }
     }
 
@@ -388,8 +552,11 @@
       b.disabled = true;
       BO.api("admin/diffusion/publier", { body: { vehiculeId: v.dbId, canaux: [c.canalId] } }).then(function (r) {
         var x = r.resultats[0];
-        BO.toast(c.nom + " : " + x.message, !x.ok);
         render(r.diffusion);
+        if (x.ok) BO.toast(c.nom + " : " + x.message);
+        else if (x.bloque) BO.diffusionBloque(c, { etat: x.bloque, message: x.message, aide: x.aide }, v.dbId);
+        else if (x.type) BO.diffusionErreur(c.nom, x, v.dbId, x.aide || c.aide);
+        else BO.toast(c.nom + " : " + x.message, true);
       }).catch(function (e) { BO.fail(e); b.disabled = false; });
     }
 
@@ -540,6 +707,12 @@
       });
     }
 
-    return load();
+    // Arrivée depuis « Publier en mode assisté » : le kit de la plateforme s'ouvre directement
+    return load().then(function () {
+      var m = /[?&]kit=(\d+)/.exec(location.hash), c = m && last[+m[1]];
+      if (!m) return;
+      BO.setQuery({});
+      if (c && c.donnees && peut) kit(c, c.statut === "a_mettre_a_jour" ? "maj" : ["publie", "expire"].indexOf(c.statut) !== -1 ? "voir" : "publier");
+    });
   };
 })();

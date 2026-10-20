@@ -101,6 +101,7 @@ $admin = [
     'GET admin/diffusion/comptes' => ['diffusion.voir', fn($u) => ['plateformes' => ComptesDiffusion::list($u), 'autres' => Diffusion::canauxAutres($u)]],
     'POST admin/diffusion/compte' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::save($u, $in)],
     'POST admin/diffusion/compte/tester' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::tester($u, (int) ($in['canalId'] ?? 0))],
+    'POST admin/diffusion/compte/apercu' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::apercu($u, $in)],
     'POST admin/diffusion/compte/deconnecter' => ['diffusion.comptes', fn($u, $in) => ComptesDiffusion::deconnecter($u, (int) ($in['canalId'] ?? 0))],
     'POST admin/diffusion/canal' => ['diffusion.comptes', fn($u, $in) => Diffusion::saveCanal($u, $in)],
 
