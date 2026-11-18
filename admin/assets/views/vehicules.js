@@ -178,7 +178,10 @@
         '<div class="photos" data-photos></div>' +
         (BO.can("photos.gerer") ? '<label class="dropzone" data-drop>' + icon("upload") + '<span><strong>Ajouter des photos</strong> — cliquez ou glissez-déposez</span><span class="small">JPG, PNG ou WebP · recadrées au format 3:2</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden data-file></label><p class="upload-progress" data-progress hidden></p>' : "") +
       "</div></section>" +
-      '<section class="card"><div class="card__head"><h2>Identification</h2></div><div class="card__body form-grid">' +
+      '<section class="card"><div class="card__head"><h2>Identification</h2>' +
+        (BO.can("vehicules.modifier") ? '<button class="btn btn--ghost btn--sm" type="button" data-cg>' + icon("camera") + "<span>Lire la carte grise</span></button>" +
+          '<input type="file" accept="image/*" capture="environment" hidden data-cg-file>' : "") +
+      '</div><div class="card__body form-grid"><div class="span-3 cg-bilan" data-cg-bilan role="status" hidden></div>' +
         inp("numeroStock", "N° de stock", v.numeroStock, 'maxlength="40" placeholder="automatique si vide"') + inp("immatriculation", "Immatriculation", v.immatriculation, 'maxlength="20" placeholder="AB-123-CD"') +
         inp("vin", "N° VIN", v.vin, 'maxlength="17"') +
         (isNew ? BO.f.select("parcId", "Parc *", BO.f.parcOptions("Choisir…"), v.parcId) : "") + inp("emplacement", "Emplacement", v.emplacement, 'maxlength="80" placeholder="ex. place 12"') +
@@ -219,6 +222,7 @@
     var markDirty = function () { BO.state.dirty = true; $("[data-dirty]", box).hidden = false; };
     form.addEventListener("input", markDirty);
     form.addEventListener("change", markDirty);
+    carteGrise(box, form, isNew, v);
 
     function renderPhotos() {
       $("[data-photos]", box).innerHTML = photos.map(function (p, i) {
@@ -276,6 +280,164 @@
         if (ok) BO.api("admin/vehicule/supprimer", { body: { id: v.dbId } }).then(function () { BO.state.dirty = false; BO.toast("Véhicule supprimé"); BO.go("#/vehicules"); }).catch(BO.fail);
       });
     });
+  }
+
+  /* ---------------------------------------------------------------- lecture de la carte grise */
+  /* La lecture propose des valeurs, la secrétaire décide : tous les champs restent libres (rien n'est verrouillé), rien n'est
+     enregistré sans le bouton « Enregistrer », une saisie n'est jamais écrasée. La photo et le texte lu ne sont pas conservés. */
+  var quitterCg = null;   // retire l'écouteur de navigation du formulaire précédent
+
+  function carteGrise(box, form, isNew, v) {
+    var bouton = $("[data-cg]", box), fichier = $("[data-cg-file]", box), bilan = $("[data-cg-bilan]", box);
+    if (!bouton || !fichier) return;
+    var libelle = $("span", bouton), texteBouton = libelle.textContent;
+    var NOMS = ["immatriculation", "vin", "marque", "modele", "carrosserie", "miseEnCirculation", "annee", "energie", "puissance", "cv", "places", "critair"];
+    var TITRE = "À vérifier sur la carte grise";
+    // Valeurs par défaut d'une fiche neuve : tant qu'elles ne sont pas touchées, elles comptent comme vides
+    var defauts = isNew ? { annee: String(v.annee), energie: v.energie, carrosserie: v.carrosserie, places: String(v.places) } : {};
+    var remplissage = false;   // vrai quand c'est le code (et non la secrétaire) qui écrit dans un champ
+    var avant = [];            // ce que les lectures ont changé (valeur d'origine de chaque champ), pour « Annuler la lecture »
+
+    function ecartDe(el) { return el.parentNode.querySelector(".cg-ecart"); }
+    function retirerReperes(el) {
+      el.classList.remove("is-lu", "is-a-verifier");
+      if (el.title === TITRE) el.removeAttribute("title");
+    }
+    function reperer(el, douteux) {
+      el.classList.add("is-lu");
+      if (douteux) { el.classList.add("is-a-verifier"); el.title = TITRE; }
+    }
+    function poser(el, valeur) {
+      remplissage = true;
+      try { el.value = valeur; el.dispatchEvent(new Event("change", { bubbles: true })); } finally { remplissage = false; }
+    }
+    function memoriser(el, change) {
+      var deja = avant.filter(function (a) { return a.el === el; })[0];
+      if (deja && el.classList.contains("is-lu")) return;   // encore tel que posé par la lecture : on garde la valeur d'origine
+      if (deja) avant.splice(avant.indexOf(deja), 1);       // modifié depuis : on garde ce que la secrétaire avait mis
+      avant.push({ el: el, change: change, valeur: el.value, lu: el.classList.contains("is-lu"), douteux: el.classList.contains("is-a-verifier") });
+    }
+    function estVide(el, nom) {
+      if (el.classList.contains("is-lu")) return true;   // posé par une lecture précédente et pas encore touché
+      return el.value.trim() === "" || (isNew && !el.hasAttribute("data-saisi") && el.value === defauts[nom]);
+    }
+    function ecart(el, valeur, douteux) {
+      var note = document.createElement("small");
+      note.className = "cg-ecart";
+      note.setAttribute("data-valeur", valeur);
+      if (douteux) note.setAttribute("data-douteux", "1");
+      note.innerHTML = "Carte grise : <strong>" + esc(valeur) + "</strong>" + (douteux ? " (à vérifier)" : "") +
+        ' <a href="#" role="button" data-cg-utiliser>Utiliser</a> <a href="#" role="button" data-cg-ignorer>Ignorer</a>';
+      el.parentNode.appendChild(note);
+    }
+
+    // Première saisie de la secrétaire dans un champ : il n'est plus « vide », et perd ses repères de lecture
+    function saisie(e) {
+      var el = e.target;
+      if (remplissage || !el.name) return;
+      el.setAttribute("data-saisi", "1");
+      retirerReperes(el);
+      var note = ecartDe(el);
+      if (note && el.value === note.getAttribute("data-valeur")) note.remove();
+    }
+    form.addEventListener("input", saisie);
+    form.addEventListener("change", saisie);
+    // Choisir une photo n'est pas une modification de la fiche
+    ["input", "change"].forEach(function (ev) { fichier.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+
+    // « Utiliser » / « Ignorer » sous un champ en désaccord avec la carte grise
+    form.addEventListener("click", function (e) {
+      var utiliser = e.target.closest("[data-cg-utiliser]"), ignorer = e.target.closest("[data-cg-ignorer]");
+      if (!utiliser && !ignorer) return;
+      e.preventDefault();
+      var note = (utiliser || ignorer).closest(".cg-ecart"), el = note.parentNode.querySelector("input, select");
+      if (utiliser && el) { memoriser(el, true); poser(el, note.getAttribute("data-valeur")); reperer(el, note.hasAttribute("data-douteux")); }
+      note.remove();
+    });
+
+    function appliquer(res) {
+      var champs = res.champs || {}, douteux = res.aVerifier || [], remplis = 0, ecarts = 0;
+      NOMS.forEach(function (nom) {
+        var el = form.elements[nom], doute = douteux.indexOf(nom) !== -1;
+        if (!el) return;
+        var ancien = ecartDe(el);
+        if (ancien) ancien.remove();
+        if (!(nom in champs)) {                      // rien de lu, mais à vérifier (ex. Crit'Air d'un utilitaire sans norme Euro)
+          if (doute && el.value.trim() === "") { memoriser(el, false); el.classList.add("is-a-verifier"); el.title = TITRE; }
+          return;
+        }
+        var valeur = String(champs[nom]);
+        if (el.value === valeur) return;             // déjà identique
+        if (el.tagName === "SELECT" && !Array.prototype.some.call(el.options, function (o) { return o.value === valeur; })) return;   // liste fermée : valeur inconnue, champ non touché
+        if (estVide(el, nom)) {
+          memoriser(el, true);
+          retirerReperes(el);
+          poser(el, valeur);
+          reperer(el, doute);
+          remplis++;
+        } else {
+          ecart(el, valeur, doute);
+          ecarts++;
+        }
+      });
+      if (!Object.keys(champs).length) {
+        bilan.hidden = true;
+        BO.toast("Carte grise illisible, reprenez la photo bien à plat et éclairée", true);
+        return;
+      }
+      var msg = remplis ? BO.fmt.plural(remplis, "champ") + (remplis > 1 ? " remplis" : " rempli") + (ecarts ? ", " + BO.fmt.plural(ecarts, "écart") + " avec la fiche (sous les champs)" : "") + " — vérifiez les champs surlignés"
+        : ecarts ? "Aucun nouveau champ rempli : " + BO.fmt.plural(ecarts, "écart") + " avec la carte grise (voir sous les champs concernés)"
+        : "La fiche correspond déjà à la carte grise : rien de plus à remplir";
+      BO.toast(msg);
+      bilan.innerHTML = "<p>" + esc(msg) + ".</p>" + (avant.length ? '<button type="button" class="btn btn--ghost btn--sm" data-cg-annuler>Annuler la lecture</button>' : "");
+      bilan.hidden = false;
+      var premier = $(".is-a-verifier", form);       // premier champ douteux, dans l'ordre de la fiche
+      if (premier) premier.focus();
+    }
+
+    // Annule la lecture, sauf pour les champs que la secrétaire a modifiés depuis (ils restent comme elle les a laissés)
+    bilan.addEventListener("click", function (e) {
+      if (!e.target.closest("[data-cg-annuler]")) return;
+      avant.forEach(function (a) {
+        if (!a.el.classList.contains("is-lu") && !a.el.classList.contains("is-a-verifier")) return;
+        if (a.change) poser(a.el, a.valeur);
+        retirerReperes(a.el);
+        if (a.lu || a.douteux) reperer(a.el, a.douteux);
+      });
+      $$(".cg-ecart", form).forEach(function (n) { n.remove(); });
+      avant = [];
+      bilan.hidden = true;
+      BO.toast("Lecture annulée");
+    });
+
+    function lire(file) {
+      if (!window.CarteGrise) { BO.toast("Le lecteur de carte grise n'est pas disponible.", true); return; }
+      bouton.disabled = true;
+      libelle.textContent = "Préparation…";
+      window.CarteGrise.lire(file, function (p) { libelle.textContent = "Lecture… " + Math.round(p * 100) + " %"; })
+        .then(function (res) { if (form.isConnected) appliquer(res); })
+        .catch(function (err) { if (form.isConnected) BO.toast(err && err.message ? err.message : "La lecture a échoué.", true); })
+        .then(function () { bouton.disabled = false; libelle.textContent = texteBouton; });
+    }
+    bouton.addEventListener("click", function () { fichier.click(); });
+    fichier.addEventListener("change", function () {
+      var f = fichier.files && fichier.files[0];
+      fichier.value = "";                            // la photo n'est pas gardée dans le champ
+      if (f) lire(f);
+    });
+
+    // En quittant la fiche : arrêt du moteur de lecture (il pèse plusieurs centaines de Mo en mémoire)
+    if (quitterCg) quitterCg();
+    function surNavigation() {
+      setTimeout(function () {
+        if (form.isConnected) return;                // navigation annulée ou fiche réaffichée : on reste
+        window.removeEventListener("hashchange", surNavigation);
+        quitterCg = null;
+        if (window.CarteGrise) window.CarteGrise.liberer();
+      }, 400);
+    }
+    window.addEventListener("hashchange", surNavigation);
+    quitterCg = function () { window.removeEventListener("hashchange", surNavigation); };
   }
 
   /* ---------------------------------------------------------------- préparation & contrôle technique */

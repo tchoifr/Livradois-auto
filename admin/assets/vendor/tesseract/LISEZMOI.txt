@@ -1,0 +1,16 @@
+Tesseract.js, hébergé ici pour la lecture des cartes grises (admin/assets/carte-grise.js).
+Aucun CDN : rien n'est téléchargé hors du site.
+
+Versions (tesseract.js et tesseract.js-core doivent rester identiques) :
+  tesseract.min.js, worker.min.js   tesseract.js@7.0.0        (Apache-2.0, voir LICENSE-tesseract.js.md)
+  core/*.wasm.js                    tesseract.js-core@7.0.0   (Apache-2.0, voir LICENSE-tesseract.js-core.txt)
+  lang/fra.traineddata.gz           @tesseract.js-data/fra@1.0.0, dossier 4.0.0_best_int (MIT)
+
+Fichiers du dossier core/ : un seul est téléchargé par le navigateur, selon l'appareil
+(relaxedsimd, simd, ou version de base). Seules les versions « lstm » sont conservées
+(le moteur est créé avec createWorker("fra", 1, …), 1 = LSTM seul).
+
+Mise à jour : télécharger les nouvelles versions avec « npm pack tesseract.js@X tesseract.js-core@X
+@tesseract.js-data/fra », recopier les mêmes fichiers (dist/tesseract.min.js, dist/worker.min.js,
+les trois tesseract-core-*lstm.wasm.js, 4.0.0_best_int/fra.traineddata.gz), puis augmenter le
+numéro ?v= dans admin/index.html.
