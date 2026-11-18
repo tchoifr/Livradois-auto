@@ -44,7 +44,7 @@
 /* ---------- Reset / base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 * { margin: 0; padding: 0; }
-html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-h) + 16px); -webkit-text-size-adjust: 100%; }
+html { accent-color: var(--brand-btn); scroll-behavior: smooth; scroll-padding-top: calc(var(--header-h) + 16px); -webkit-text-size-adjust: 100%; }
 body {
   font-family: var(--font);
   font-size: 16px;
@@ -185,13 +185,27 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
 .field > label, .field__label { font-size: 13px; font-weight: 700; color: var(--ink-700); }
 .input, .select, .textarea {
   width: 100%; min-height: 48px; padding: 0 14px; border-radius: 12px;
-  border: 1.5px solid var(--line); background: var(--surface); font-size: 15px;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font-size: 15px;   /* couleur explicite : un champ placé dans un bandeau sombre n'hérite plus du texte blanc */
   transition: border-color .2s, box-shadow .2s;
 }
+.input::placeholder, .textarea::placeholder { color: var(--muted); opacity: 1; }
 .textarea { padding: 12px 14px; min-height: 120px; resize: vertical; line-height: 1.5; }
 .select { appearance: none; padding-right: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%235f6672' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; cursor: pointer; }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--line-strong); }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--ink-900); box-shadow: 0 0 0 4px rgba(17, 19, 23, .08); }
+/* Listes déroulantes : le navigateur affiche normalement la ligne choisie en bleu système. Là où il sait les personnaliser
+   (Chrome, Edge…), la liste prend les couleurs du site ; ailleurs elle garde l'apparence du système. */
+.select option:checked { background-color: var(--brand-100); color: var(--ink-900); }
+@supports (appearance: base-select) {
+  .select, .select::picker(select) { appearance: base-select; }
+  .select { display: inline-flex; align-items: center; }   /* texte centré dans la hauteur du champ */
+  .select::picker-icon { display: none; }   /* on garde la flèche du site */
+  .select::picker(select) { margin-top: 6px; padding: 6px; border: 1.5px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-lg); max-height: min(340px, 60vh); }
+  .select option { padding: 10px 12px; border-radius: 9px; font-weight: 500; color: var(--text); cursor: pointer; }
+  .select option::checkmark { display: none; }
+  .select option:checked { background: var(--brand-100); color: var(--ink-900); font-weight: 700; }
+  .select option:hover, .select option:focus-visible { background: var(--brand-btn); color: #fff; outline: none; }
+}
 .input-icon { position: relative; }
 .input-icon .i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .input-icon .input { padding-left: 44px; }
@@ -356,7 +370,7 @@ a.info-card:hover { border-color: var(--ink-900); }
 .site-footer .hours li span:last-child { color: #fff; }
 .site-footer .hours li.is-today { color: var(--sand); }
 .site-footer .hours li.is-today span:last-child { color: var(--sand); }
-.footer__bottom { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 24px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 14px; }
+.footer__bottom { display: flex; justify-content: center; text-align: center; gap: 16px; flex-wrap: wrap; padding-block: 24px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 14px; }
 .footer__bottom a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- En-tête des pages internes ---------- */
@@ -394,6 +408,7 @@ a.info-card:hover { border-color: var(--ink-900); }
 .catalog-hero .search-big { display: flex; gap: 10px; margin-top: 28px; max-width: 640px; }
 .catalog-hero .search-big .input-icon { flex: 1; }
 .catalog-hero .search-big .input { min-height: 56px; border-color: transparent; font-size: 16px; }
+.catalog-hero .search-big .input:focus::placeholder { color: transparent; }   /* l'exemple de recherche disparaît dès qu'on clique dans le champ */
 .catalog-hero__stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 26px; color: rgba(255, 255, 255, .75); font-size: 14px; }
 .catalog-hero__stats span { display: inline-flex; align-items: center; gap: 8px; }
 .catalog-hero__stats .i { color: var(--sand); width: 18px; height: 18px; }
@@ -445,7 +460,7 @@ a.info-card:hover { border-color: var(--ink-900); }
 .pill-remove:hover { border-color: var(--ink-600); }
 .pill-remove .i { width: 14px; height: 14px; }
 .empty { text-align: center; padding: 64px 24px; border: 1.5px dashed var(--line-strong); border-radius: var(--radius); background: var(--surface); }
-.empty .i { width: 44px; height: 44px; margin: 0 auto 14px; color: var(--sand); }
+.empty > .i { width: 44px; height: 44px; margin: 0 auto 14px; color: var(--sand); }   /* icône du message seulement : pas celle d'un bouton placé dans le bloc */
 .empty h3 { font-size: 20px; }
 .empty p { color: var(--muted); margin: 8px auto 20px; max-width: 420px; }
 .load-more { display: flex; justify-content: center; margin-top: 32px; }

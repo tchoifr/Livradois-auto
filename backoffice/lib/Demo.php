@@ -114,7 +114,7 @@ final class Demo
         // Rendez-vous : aujourd'hui, cette semaine, en retard, annulé, terminé
         $slot = function (string $day, string $time) {
             $d = date('Y-m-d', strtotime($day));
-            while (in_array((int) date('w', strtotime($d)), [0], true)) {
+            while (in_array((int) date('w', strtotime($d)), [0, 6], true)) {
                 $d = date('Y-m-d', strtotime("$d +1 day"));
             }
             return "$d $time:00";

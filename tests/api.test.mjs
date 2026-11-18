@@ -33,7 +33,7 @@ async function call(route, { token, method, body, query, form, demo, raw, header
 const login = async (email, password) => (await call("auth/login", { body: { email, password } })).data?.token;
 const day = (offset, time) => {
   const d = new Date(); d.setDate(d.getDate() + offset);
-  while (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);   // garage fermé le samedi et le dimanche
   return d.toISOString().slice(0, 10) + " " + time;
 };
 const fixture = (...args) => JSON.parse(execFileSync(PHP[0], [...PHP.slice(1), "tests/fixture.php", ...args.map(String)], { env: { ...process.env } }).toString());
